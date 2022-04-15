@@ -7,7 +7,5 @@ using StaticArrays
 δ = SVector(1.,2.,3.)
 ϵ = 0.1
 
-u = LevelSetQuadrature.Linearization(α,β,δ,ϵ)
-v = LevelSetQuadrature.Linearization(α,β,δ,ϵ)
+rec = HyperRectangle(SVector(0.,0.,1.), SVector(1.,1.,1.))
 
-@test (u + v).ϵ == ϵ

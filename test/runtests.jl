@@ -1,1 +1,1 @@
-include("linearization_test.jl")
+include("quadrature_test.jl")
