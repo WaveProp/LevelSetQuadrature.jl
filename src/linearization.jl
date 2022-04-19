@@ -33,13 +33,13 @@ function bound(l::Linearization)
 end
 
 ## Constructors
-Linearization(rec::HyperRectangle, α::T, β::SVector{D,T}, ϵ::T) where{D,T} = Linearization{D,T}(rec, α, β, δ(rec), ϵ)
+Linearization(rec::HyperRectangle, α::T, β::SVector{D,T}, ϵ::T) where {D,T} = Linearization{D,T}(rec, α, β, half_width(rec), ϵ)
 
 ## addition
 Base.:+(u::Linearization{D,T}, c::Real) where{D,T} = Linearization{D,T}(u.rec, u.α+c, u.β, u.δ, u.ϵ)
 Base.:+(c::Real, u::Linearization{D,T}) where{D,T} = Linearization{D,T}(u.rec, u.α+c, u.β, u.δ, u.ϵ)
 function Base.:+(u::Linearization{D,T},v::Linearization{D,T}) where{D,T}
-    @assert u.rec == v.rec
+    # @assert u.rec == v.rec
     Linearization{D,T}(u.rec, u.α + v.α, u.β + v.β, u.δ, u.ϵ + v.ϵ)
 end
 
@@ -56,11 +56,14 @@ end
 Base.:*(u::Linearization{D,T}, c::Real) where{D,T} = Linearization{D,T}(u.rec, u.α*c, u.β*c, u.δ, u.ϵ*abs(c))
 Base.:*(c::Real, u::Linearization{D,T}) where{D,T} = Linearization{D,T}(u.rec, u.α*c, u.β*c, u.δ, u.ϵ*abs(c))
 function Base.:*(u::Linearization{D,T},v::Linearization{D,T}) where{D,T}
-    @assert u.rec == v.rec
+    # @assert u.rec == v.rec
     l1 = abs.(u.β)' * u.δ
     l2 = abs.(v.β)' * u.δ
     Linearization{D,T}(u.rec, u.α * v.α, u.α*v.β + v.α*u.β, u.δ, l1*l2 + (abs(u.α)+l1)*v.ϵ + (abs(v.α)+l2)*u.ϵ + u.ϵ*v.ϵ)
 end
+
+## division
+Base.:/(u::Linearization{D,T}, c::Real) where{D,T} = Linearization{D,T}(u.rec, u.α/c, u.β/c, u.δ, u.ϵ/abs(c))
 
 # TODO: explain this function
 function dual_variables(rec::HyperRectangle{D,T}) where {D,T}
@@ -95,3 +98,15 @@ end
 # function Base.show(io::IO,l::Linearization)
 #     println("Linearization over ($rec) with $(value(l)) + $(gradient(l))⋅(x-xc) + [-$(remainder(l)),$(remainder(l))]")
 # end
+
+# finite difference gradient implementation.
+function gradient(f::Function,x::SVector{N,T}) where {N,T}
+    h = (eps(T))^(1/3)
+    ntuple(N) do d
+        xp = ntuple(i-> i==d ? x[i]+h : x[i] , N) |> SVector
+        xm = ntuple(i-> i==d ? x[i]-h : x[i] , N) |> SVector
+        (f(xp) - f(xm))/(2h)
+    end |> SVector
+end
+
+Base.eps(::Type{Linearization{N,T}}) where {N,T} = eps(T)
