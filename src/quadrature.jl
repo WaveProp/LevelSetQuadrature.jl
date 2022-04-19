@@ -9,7 +9,7 @@ function V(x, k, y)
     insert(x, k, y)
 end
 
-function Sgn(m, s, S, σ) 
+function Sgn(m, s, S, σ)
     if m*s*σ > 0 || S
         if m * σ > 0
             return 1
@@ -24,7 +24,7 @@ end
 function quadratureNodesWeights(Ψ::Array{<:Function,N}, Sign::Array{<:Integer,N}, rec::HyperRectangle{D}, q, Surf=false) where {N,D}
     @assert !Surf || (D > 1 && N == 1)
     ##### Base case #####
-    if D == 1 
+    if D == 1
         roots = [rec.L[1], rec.U[1]]
         for ψ in Ψ
             append!(roots, find_zeros(ψ, rec.L[1], rec.U[1]))
@@ -57,7 +57,7 @@ function quadratureNodesWeights(Ψ::Array{<:Function,N}, Sign::Array{<:Integer,N
     #         else
     #             return Vector{SVector{D, Float64}}(), Vector{Float64}()
     #         end
-    #     end 
+    #     end
     # end
     # if N == 0
     #     ## tensor Gauss quadrature
@@ -68,7 +68,7 @@ function quadratureNodesWeights(Ψ::Array{<:Function,N}, Sign::Array{<:Integer,N
     k = argmax(abs.(ForwardDiff.gradient(Ψ[1], center(rec))))
     Ψ̃ = Vector{Function}()
     Sigñ = Vector{Integer}()
-    for (ψ, s) in zip(Ψ, Sign) 
+    for (ψ, s) in zip(Ψ, Sign)
         ∇ψ(x) = ForwardDiff.gradient(ψ, x)
         g = ∇ψ(center(rec))
         δ = [bound(x -> ∇ψ(x)[j], rec) for j = 1:D]
@@ -103,7 +103,7 @@ function quadratureNodesWeights(Ψ::Array{<:Function,N}, Sign::Array{<:Integer,N
                 push!(nodes, V(x, k, y))
                 push!(weights, w * ω)
             end
-        end      
+        end
     end
     ###########################################
 

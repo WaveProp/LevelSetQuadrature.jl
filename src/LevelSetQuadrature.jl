@@ -2,7 +2,7 @@ module LevelSetQuadrature
 
 using StaticArrays
 
-include("HyperRectangle.jl")
+include("hyperrectangle.jl")
 include("linearization.jl")
 include("quadrature.jl")
 
