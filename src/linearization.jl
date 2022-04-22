@@ -62,6 +62,9 @@ function Base.:*(u::Linearization{D,T},v::Linearization{D,T}) where{D,T}
     Linearization{D,T}(u.rec, u.α * v.α, u.α*v.β + v.α*u.β, u.δ, l1*l2 + (abs(u.α)+l1)*v.ϵ + (abs(v.α)+l2)*u.ϵ + u.ϵ*v.ϵ)
 end
 
+## division
+Base.:/(u::Linearization{D,T}, c::Real) where{D,T} = Linearization{D,T}(u.rec, u.α/c, u.β./c, u.δ, u.ϵ/abs(c))
+
 # TODO: explain this function
 function dual_variables(rec::HyperRectangle{D,T}) where {D,T}
     xc  = center(rec)
@@ -69,7 +72,7 @@ function dual_variables(rec::HyperRectangle{D,T}) where {D,T}
         β = ntuple(i->i==dim ? one(T) : zero(T),D) |> SVector
         Linearization(rec,xc[dim],β,half_width(rec),zero(T))
     end
-    return SVector(x̂)
+    return SVector{D, Union{Linearization{D,T}, T}}(x̂)
 end
 
 function linearization(f,rec::HyperRectangle{D}) where {D}
@@ -91,6 +94,14 @@ function bound(f::Function, rec::HyperRectangle)
     f̂ = linearization(f,rec)
     bound(f̂)
 end
+
+function ∇(f::Function, D, h=1e-5)
+    grad(x) = ntuple(D) do d
+        x̃ = [i == d ? x[i]+h : x[i] for i = 1:D]
+        (f(x̃) - f(x)) / h
+    end |> SVector
+end
+
 
 # function Base.show(io::IO,l::Linearization)
 #     println("Linearization over ($rec) with $(value(l)) + $(gradient(l))⋅(x-xc) + [-$(remainder(l)),$(remainder(l))]")
