@@ -1,60 +1,30 @@
-using LevelSetQuadrature
-
-using Roots
-using ForwardDiff
-using StaticArrays
-using LinearAlgebra
-using FastGaussQuadrature
-
 using Test
-using Plots
+using LevelSetQuadrature
+using LinearAlgebra
+using SpecialFunctions
 
-##### 1D #####
-# U = HyperRectangle(SVector(-2.), SVector(2.))
-# ϕ(x) = x^2 - 1
-# ψ(x) = sin(x)
+using LevelSetQuadrature: svector
 
-# quadratureNodesWeights([ϕ, ψ], [-1, 1], U, 3)
-###############################################
-
-##### 2D #####
-U = HyperRectangle(SVector(-1., -1.), SVector(1., 1.))
-ϕ(x)  = x[1]^2 + (x[2])^2 - 1
-∇ϕ(x) = SVector(2x[1], 2(x[2]))
-plot(xlim=(-1.6,1.6), ylim=(-1.6, 1.6), aspect_ratio=1)
-# X, W = quadratureNodesWeights([ϕ], [-1], U, 5, true)
-X, W = quadratureNodesWeights([ϕ], [-1], U, 5, true, [∇ϕ])
-
-plot!([x[1] for x in X], [x[2] for x in X], seriestype=:scatter)
-θ = 0 : π/300 : π/2
-plot!(cos.(θ), sin.(θ))
-
-# @test sum(W) ≈ π / 4.
-@test sum(W) ≈ 2π
-#############################################################
-
-
-##### 3D #####
-U = HyperRectangle(SVector(-1.5, -1.5, -1.5), SVector(1.5, 1.5, 1.5))
-ϕ(x) = x[1]^2 + x[2]^2 + (x[3])^2 - 1
-∇ϕ(x) = SVector(2x[1], 2x[2], 2x[3])
-X, W = quadratureNodesWeights([ϕ], [-1], U, 5, true, [∇ϕ])
-
-
-plot([x[1] for x in X], [x[2] for x in X], [x[3] for x in X], seriestype=:scatter)
-# # θ = LinRange(0, π/3, 50)
-# # t = LinRange(0, 2π, 100)
-# # @. plot!(sin(θ)'*cos(t), sin(θ)*sin(t), cos(θ) - 0.5)
-
-# @test sum(W) ≈ 4π / 3
-@test sum(W) ≈ 4π
-
-
-##### 4D #####
-U = HyperRectangle(SVector(-1.5, -1.5, -1.5, -1.5), SVector(1.5, 1.5, 1.5, 1.5))
-ϕ(x) = x[1]^2 + x[2]^2 + x[3]^2 + x[4]^2 - 1
-∇ϕ(x) = SVector(2x[1], 2x[2], 2x[3], 2x[4])
-X, W = quadratureNodesWeights([ϕ], [-1], U, 5, false, [∇ϕ])
-
-@test sum(W) ≈ π^2 / 2
-@test sum(W) ≈ 2π^2
+@testset "Hypersphere area/volume" begin
+    sphere_volume(r,n) = π^(n/2)/gamma(n/2+1)*r^n
+    sphere_area(r,n)   = 2*π^(n/2)/gamma(n/2)*r^(n-1)
+    r = 1.5
+    p = 5
+    atol = 1e-3
+    for n in 2:4
+        @testset "dimension $n" begin
+            # FIXME: there is an error when the bounding box touches the
+            # boundary of the surface, so it has to be taken slighly larger for
+            # the moment
+            U = HyperRectangle(1.1*svector(i->-r,n),1.1*svector(i->r,n))
+            ϕ(x)  = sum(x .* x) - r^2
+            ∇ϕ(x) = svector(i->2*x[i],n)
+            # volume test
+            X, W = quadratureNodesWeights([ϕ], [-1], U, p, false, [∇ϕ])
+            @test isapprox(sum(W),sphere_volume(r,n);atol)
+            # area test
+            X, W = quadratureNodesWeights([ϕ], [-1], U, p, true, [∇ϕ])
+            @test isapprox(sum(W),sphere_area(r,n);atol)
+        end
+    end
+end
