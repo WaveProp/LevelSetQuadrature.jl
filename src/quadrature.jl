@@ -1,7 +1,16 @@
+# TODO: change the name of V and document its various forms
 function V(x, k, y)
-    # FIXME: why this hack?
-    x = isa(x, SVector) ? x : SVector(x)
     insert(x, k, y)
+end
+
+function V(x̂::SVector{<:Any,<:Linearization{N,T}},k,y::T) where {N,T}
+    rec = first(x̂) |> domain
+    ŷ = Linearization(y,zero(SVector{N,T}),zero(T),rec)
+    insert(x̂,k,ŷ)
+end
+
+function V(x::Real,k,y::Real)
+    insert(SVector(x),k,y)
 end
 
 function Sgn(m, s, S, σ)

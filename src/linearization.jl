@@ -92,12 +92,11 @@ Base.:/(u::Linearization, c::Real) = Linearization(value(u) / c, gradient(u) / c
 # TODO: explain this function
 function dual_variables(rec::HyperRectangle{D,T}) where {D,T}
     xc = center(rec)
-    x̂ = ntuple(D) do dim
+    x̂ = svector(D) do dim
         β = svector(i -> i == dim ? one(T) : zero(T), D)
         Linearization(xc[dim], β, zero(T), rec)
     end
-    # FIXME: why this? I suspect it is related to the hack in the `V` function
-    return SVector{D, Union{Linearization{D,T}, T}}(x̂)
+    return x̂
 end
 
 function linearization(f, rec::HyperRectangle)
