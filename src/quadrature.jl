@@ -59,7 +59,7 @@ function dim1NodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, L, U
     return nodes, weights
 end
 
-function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRectangle{D}, q, surf=false, ∇Ψ=nothing) where {D}
+function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRectangle{D}, q, surf, ∇Ψ) where {D}
     @assert !surf || (D > 1)
     # plotrec(rec)
     ##### Pruning #####

@@ -5,11 +5,7 @@ using StaticArrays
 using Roots
 using FastGaussQuadrature
 
-using Plots
-
-import WavePropBase
-
-using WavePropBase:
+import WavePropBase:
     HyperRectangle,
     section,
     center,

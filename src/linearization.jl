@@ -43,9 +43,9 @@ remainder(l::Linearization) = l.ϵ
 
 Domain of validity of the linearization `l`.
 """
-WavePropBase.domain(l::Linearization) = l.rec
+domain(l::Linearization) = l.rec
 
-WavePropBase.half_width(l::Linearization) = half_width(domain(l))
+half_width(l::Linearization) = half_width(domain(l))
 
 function bound(l::Linearization)
     δ = half_width(l)
