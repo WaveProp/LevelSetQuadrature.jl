@@ -1,6 +1,6 @@
 name = "LevelSetQuadrature"
 uuid = "a35140cd-bf05-4d18-a555-b70612461153"
-authors = ["Luiz M. Faria <maltezfaria@gmail.com>"]
+authors = ["Luiz M. Faria <maltezfaria@gmail.com>", "Dongchen He <dongchen.he@polytechnique.edu>"]
 version = "0.1.0"
 
 [deps]
