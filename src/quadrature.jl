@@ -164,22 +164,9 @@ function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}
     return nodes, weights
 end
 
-function adapt!(nodes::Vector{<:Real}, weights::Vector, rec::HyperRectangle{1})
-    for (i, x) in enumerate(nodes)
-        nodes[i] = x * (high_corner(rec)[1]-low_corner(rec)[1]) + low_corner(rec)[1]
-        weights[i] *= high_corner(rec)[1] - low_corner(rec)[1]
-    end
-end
-
-function adapt!(nodes::Vector{SVector{D,T}}, weights::Vector{T}, rec::HyperRectangle{D,T}) where{D,T}
-    for (i, x) in enumerate(nodes)
-        nodes[i] = x .* (high_corner(rec)-low_corner(rec)) + low_corner(rec)
-        weights[i] *= prod(high_corner(rec) - low_corner(rec))
-    end
-end
-
-function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vector{<:Integer}, rec::HyperRectangle{D}, q, surf, ∇Ψ, level=0) where{D}
+function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vector{<:Integer}, q, surf, ∇Ψ, level=0) where{D}
     @assert !surf || (D > 1)
+    rec = Ψ[1].domain
     ##### Pruning #####
     delInd = Vector{Int}()
     n = length(Ψ) 
@@ -214,8 +201,7 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
 
     ##### Base case #####
     if D == 1
-        nodes, weights = dim1NodesWeights([x->ψ(x) for ψ in Ψ], signs, 0., 1., q)
-        adapt!(nodes, weights, rec)
+        nodes, weights = dim1NodesWeights([x->ψ(x) for ψ in Ψ], signs, low_corner(rec)[1], high_corner(rec)[1], q)
         return nodes, weights
     end
     ######################
@@ -235,7 +221,6 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     end
     if length(K) == 0
         split_ax = argmax(high_corner(rec) - low_corner(rec))
-        rec1, rec2 = split(rec, split_ax)
         Ψ1 = Vector{BernsteinPolynomial{D}}()
         Ψ2 = Vector{BernsteinPolynomial{D}}()
         for ψ in Ψ 
@@ -243,8 +228,8 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
             push!(Ψ1, ψ1); push!(Ψ2, ψ2)
         end
         ∇Ψ1 = [∇(ψ1) for ψ1 in Ψ1]; ∇Ψ2 = [∇(ψ2) for ψ2 in Ψ2]
-        X1, W1 = quadratureNodesWeights(Ψ1, copy(signs), rec1, q, surf, ∇Ψ1, level+1)
-        X2, W2 = quadratureNodesWeights(Ψ2, copy(signs), rec2, q, surf, ∇Ψ2, level+1)
+        X1, W1 = quadratureNodesWeights(Ψ1, copy(signs), q, surf, ∇Ψ1, level+1)
+        X2, W2 = quadratureNodesWeights(Ψ2, copy(signs), q, surf, ∇Ψ2, level+1)
         return (append!(X1, X2), append!(W1, W2))
     elseif length(K) == 1
         k = K[1]
@@ -263,8 +248,8 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     ∇Ψ̃ = Vector{SVector{D,BernsteinPolynomial{D-1}}}()
     for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
         pos_neg = bound(∇ψ[k])[1] > 0 ? 1 : -1
-        ψL = ψ(k, 0); sL = Sgn(pos_neg, s, surf, -1); ∇ψL = svector(j->∇ψ[j](k, 0), D)
-        ψU = ψ(k, 1); sU = Sgn(pos_neg, s, surf, 1);  ∇ψU = svector(j->∇ψ[j](k, 1), D)
+        ψL = lower_restrict(ψ, k); sL = Sgn(pos_neg, s, surf, -1); ∇ψL = svector(j->lower_restrict(∇ψ[j], k), D)
+        ψU = upper_restrict(ψ, k); sU = Sgn(pos_neg, s, surf, 1);  ∇ψU = svector(j->upper_restrict(∇ψ[j], k), D)
         append!(Ψ̃, [ψL, ψU])
         append!(new_signs, [sL, sU])
         append!(∇Ψ̃, [∇ψL, ∇ψU])
@@ -272,24 +257,19 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     ###############################
 
     ##### Recursion in one less dimension #####
-    X, W = quadratureNodesWeights(Ψ̃, new_signs, HyperRectangle(svector(i->0., D-1), svector(i->1., D-1)), q, false, ∇Ψ̃, level)
+    X, W = quadratureNodesWeights(Ψ̃, new_signs, q, false, ∇Ψ̃, level)
     nodes = Vector{SVector{D,Float64}}()
     weights = Vector{Float64}()
     for (x, w) in zip(X, W)
         if surf
-            y = find_zero(y -> Ψ[1](V(x, k, y)), (0., 1.))
+            y = find_zero(y -> Ψ[1](V(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
             x̃ = V(x, k, y)
             ∇ϕ = [∇Ψ[1][j](x̃) for j = 1:D]
-            for i in 1:D
-                if i ≠ k
-                    ∇ϕ[i] *= high_corner(rec)[i] - low_corner(rec)[i]
-                end
-            end
             push!(nodes, x̃)
-            push!(weights, w * LinearAlgebra.norm(∇ϕ) / abs(∇ϕ[k])) / (high_corner(rec)[k] - low_corner(rec)[k])
+            push!(weights, w * LinearAlgebra.norm(∇ϕ) / abs(∇ϕ[k]))
         else
             Φ = [y -> ψ(V(x, k, y)) for ψ in Ψ]
-            Y, Ω = dim1NodesWeights(Φ, signs, 0., 1., q, false)
+            Y, Ω = dim1NodesWeights(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], q, false)
             for (y, ω) in zip(Y, Ω)
                 push!(nodes, V(x, k, y))
                 push!(weights, w * ω)
@@ -297,6 +277,5 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
         end
     end
     ###########################################
-    adapt!(nodes, weights, rec)
     return nodes, weights
 end

@@ -2,41 +2,70 @@
 struct BernsteinPolynomial{D}
     coeffs::Array{<:Real,D}
     degree::NTuple{D,Integer}
+    domain::HyperRectangle{D,<:Real}
 end
 
-BernsteinPolynomial(c::Array{<:Real,D}) where{D} = BernsteinPolynomial(c, size(c).-1)
+□(D) = HyperRectangle(svector(i->0., D), svector(i->1., D))
 
-function BernsteinBase(k::NTuple{D,Integer}, i::CartesianIndex{D}) where{D}
-    c = prod(j -> binomial(k[j], i[j]-1), 1:D)
-    x = prod(j -> "(1-x_$j)^$(i[j]-1) (x_$j)^$(k[j]-i[j]+1) ", 1:D)
+BernsteinPolynomial(c::Array{<:Real,D}) where{D} = BernsteinPolynomial(c, size(c).-1, □(D))
+
+function BernsteinBase(k::NTuple{D,Integer}, i::CartesianIndex{D}, domain::HyperRectangle{D,<:Real}=□(D)) where{D}
+    l = low_corner(domain); u = high_corner(domain)
+    c = prod(j -> binomial(k[j], i[j]-1) / (u[j] - l[j])^k[j], 1:D)
+    x = prod(j -> "(x_$j-$(l[j]))^$(i[j]-1) ($(u[j])-x_$j)^$(k[j]-i[j]+1) ", 1:D)
     string(c, x)
 end
 
-function BernsteinHTML(k::NTuple{D,Integer}, i::CartesianIndex{D}) where{D}
-    c = prod(j -> binomial(k[j], i[j]-1), 1:D)
+function BernsteinHTML(k::NTuple{D,Integer}, i::CartesianIndex{D}, domain::HyperRectangle{D,<:Real}=□(D)) where{D}
+    l = low_corner(domain); u = high_corner(domain)
+    c = prod(j -> binomial(k[j], i[j]-1) / (u[j] - l[j])^k[j], 1:D)
     x = prod(1:D) do j
         k[j] == 0 && return ""
         p = i[j] == 2 ? "" : string(i[j] - 1)
         q = i[j] == k[j] ? "" : string(k[j]-i[j]+1)
-        i[j] == 1        && return "(1-<i>x</i><sub><i>$j</i></sub>)<sup><i>$q</i></sup>"
-        i[j] == k[j] + 1 && return "<i>x</i><sub><i>$j</i></sub><sup><i>$p</i></sup>"
-        "<i>x</i><sub><i>$j</i></sub><sup><i>$p</i></sup>(1-<i>x</i><sub><i>$j</i></sub>)<sup><i>$q</i></sup>"
+
+        Xl = "(<i>x</i><sub>$j</sub>-$(l[j]))"
+        if l[j] == 0 Xl = "<i>x</i><sub>$j</sub>" end
+        if l[j] <  0 Xl = "(<i>x</i><sub>$j</sub>+$(-l[j]))" end
+
+        Xu = "($(u[j])-<i>x</i><sub>$j</sub>)"
+        if u[j] == 0 Xu = "(-<i>x</i><sub>$j</sub>)" end
+
+        i[j] == 1        && return Xu * "<sup>$q</sup>"
+        i[j] == k[j] + 1 && return Xl * "<sup>$p</sup>"
+        Xl * "<sup>$p</sup>" * Xu * "<sup>$q</sup>"
     end
     (c, x)
+end
+
+function lower_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
+    @assert 1 ≤ d ≤ D
+    BernsteinPolynomial(selectdim(p.coeffs, d, 1).*1, ntuple(i->i<d ? p.degree[i] : p.degree[i+1], D-1), section(p.domain, d))
+end
+
+function upper_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
+    @assert 1 ≤ d ≤ D
+    if p.degree[d] ≥ size(p.coeffs)[d]
+        BernsteinPolynomial(reshape([0.], ntuple(i->1,D-1)), ntuple(i->1,D-1), section(p.domain, d))
+    else
+        BernsteinPolynomial(selectdim(p.coeffs, d, size(p.coeffs)[d]).*1, ntuple(i->i<d ? p.degree[i] : p.degree[i+1], D-1), section(p.domain, d))
+    end
 end
 
 function (p::BernsteinPolynomial{D})(d::Integer, x::Real) where{D}
     @assert 1 ≤ d ≤ D
     k = p.degree[d]
-    k == 0 && return BernsteinPolynomial(selectdim(p.coeffs, d, 1) .* 1, ntuple(i->i<d ? i : i+1, D-1))
+    k == 0 && return BernsteinPolynomial(selectdim(p.coeffs, d, 1).*1, ntuple(i->i<d ? p.degree[i] : p.degree[i+1], D-1), section(p.domain, d))
     n = size(p.coeffs)[d]
+    l = low_corner(p.domain)[d]; r = high_corner(p.domain)[d]
+    x = (x - l) / (r - l)
     B̃ = mapslices(p.coeffs; dims=d) do b
         x == 0 && return b[1]
         x == 1 && return k ≥ n ? 0 : b[n]
         for i in k:-1:1
             if i ≥ n
                 @. b[1:n-1] = b[1:n-1]*(1-x) + b[2:n]*x
-                b[n] = b[n]*(1-x)
+                b[n] = b[n]*x
             else
                 @. b[1:i] = b[1:i]*(1-x) + b[2:i+1]*x      
             end
@@ -44,7 +73,7 @@ function (p::BernsteinPolynomial{D})(d::Integer, x::Real) where{D}
         b[1]
     end
     D == 1 && return B̃[1]
-    BernsteinPolynomial(selectdim(B̃, d, 1) .* 1, ntuple(i->i<d ? p.degree[i] : p.degree[i+1], D-1))
+    BernsteinPolynomial(selectdim(B̃, d, 1) .* 1, ntuple(i->i<d ? p.degree[i] : p.degree[i+1], D-1), section(p.domain, d))
 end
 
 (p::BernsteinPolynomial{1})(x::Real) = p(1, x)
@@ -63,28 +92,41 @@ function ∇(p::BernsteinPolynomial{D}) where{D}
     ntuple(D) do d
         n = size(p.coeffs)[d]
         k = p.degree[d]
+        l = low_corner(p.domain)[d]; u = high_corner(p.domain)[d]
         coeffs = mapslices(p.coeffs, dims=d) do b
-            c = (b[2:n] .- b[1:n-1]) .* k
+            c = (b[2:n] .- b[1:n-1]) .* k ./ (u-l)
             if k ≥ n
-                push!(c, -b[n]*k)                
+                push!(c, -b[n]*k/(u-l))                
             end
             c
         end
-        BernsteinPolynomial(coeffs, ntuple(i->i==d ? p.degree[i]-1 : p.degree[i], D))
+        BernsteinPolynomial(coeffs, ntuple(i->i==d ? p.degree[i]-1 : p.degree[i], D), p.domain)
     end |> SVector
 end
 
 Base.show(io::IO, ::MIME"text/plain", p::BernsteinPolynomial) = println(io, join([BernsteinBase(p.degree, i) for i in CartesianIndices(p.coeffs)], "+ "))
 
 function Base.show(io::IO, ::MIME"text/html", p::BernsteinPolynomial)
-    str = Vector{String}()
+    str = ""
     for i in CartesianIndices(p.coeffs)
         p.coeffs[i] == 0 && continue
-        (c, x) = BernsteinHTML(p.degree, i)
-        term = c * p.coeffs[i] == 1 && x ≠ "" ? x : string(c*p.coeffs[i], x)
-        push!(str, term)
+        (c, x) = BernsteinHTML(p.degree, i, p.domain)
+        coeff = c * p.coeffs[i]
+        if coeff == 1
+            if x == "" str *= " + 1"
+            else str *= " + " * x end
+        elseif coeff == -1
+            if x == "" str *= " - 1"
+            else str *= " - " * x end
+        elseif coeff > 0
+            str *= " + " * string(coeff, x)
+        else
+            str *= " - " * string(-coeff, x)
+        end
     end
-    println(io, join(str, " + "))
+    str == "" && println(io, "0.0")
+    str[2] == '+' && println(io, str[4:end])
+    str[2] == '-' && println(io, str[2:end])
 end
 
 function bound(p::BernsteinPolynomial)
@@ -121,8 +163,10 @@ function Base.split(p::BernsteinPolynomial{D}, d::Integer, α=0.5) where{D}
         append!(c1, c2)
         c1
     end
-    p1 = BernsteinPolynomial(selectdim(coeffs, d, 1:k+1)*1, p.degree)
-    p2 = BernsteinPolynomial(selectdim(coeffs, d, k+1:k+n)*1, p.degree)
+    split_point = low_corner(p.domain)[d] + (high_corner(p.domain)[d] - low_corner(p.domain)[d])*α
+    rec1, rec2 = split(p.domain, d, split_point)
+    p1 = BernsteinPolynomial(selectdim(coeffs, d, 1:k+1)*1, p.degree, rec1)
+    p2 = BernsteinPolynomial(selectdim(coeffs, d, k+1:k+n)*1, p.degree, rec2)
     p1, p2
 end
 
@@ -149,18 +193,20 @@ function renormalize(A::Array{<:Real,D}, rec::HyperRectangle{D}) where(D)
     Ã
 end
 
-function power2Berstein(a::Array{<:Real,D}, k=size(a)) where{D}
-    b = zeros(k)
+function power2Berstein(a::Array{<:Real,D}, U::HyperRectangle{D}=□(D), k=size(a).-1) where{D}
+    b = zeros(k.+1)
     for i in CartesianIndices(a)
         temp = zeros(Tuple([i[j] for j = 1:D]))
         for l in CartesianIndices(temp) 
             temp[l] = a[l] * prod(1:D) do j
-                binomial(i[j]-1, l[j]-1) / binomial(k[j]-1, l[j]-1)
+                binomial(i[j]-1, l[j]-1) / binomial(k[j], l[j]-1)
             end
         end
         b[i] = sum(temp)
     end
-    BernsteinPolynomial(b)
+    BernsteinPolynomial(b, k, U)
 end
 
 export BernsteinPolynomial, ∇, renormalize, power2Berstein
+
+
