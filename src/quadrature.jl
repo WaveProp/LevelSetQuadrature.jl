@@ -76,6 +76,13 @@ end
 
 function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRectangle{D}, q, surf, ∇Ψ, level=0) where {D}
     @assert !surf || (D > 1)
+    if level ≥ D*5
+        if surf
+            return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
+        else
+            return [center(rec)], prod(high_corner(rec).-low_corner(rec))
+        end
+    end
     ##### Pruning #####
     delInd = Vector{Int}()
     n = length(Ψ) 
@@ -92,10 +99,10 @@ function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}
     end
     deleteat!(signs, delInd)
     if n == 0 || all(i -> i == 0, signs)
-        if !surf
-            return tensorGaussQuadrature(rec, gausslegendre(q)...)
-        else
+        if surf
             return Vector{SVector{D,Float64}}(), Vector{Float64}()
+        else
+            return tensorGaussQuadrature(rec, gausslegendre(q)...)
         end
     end
     deleteat!(Ψ, delInd)
@@ -167,6 +174,13 @@ end
 function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vector{<:Integer}, q, surf, ∇Ψ, level=0) where{D}
     @assert !surf || (D > 1)
     rec = Ψ[1].domain
+    if level ≥ D*5
+        if surf
+            return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
+        else
+            return [center(rec)], prod(high_corner(rec).-low_corner(rec))
+        end
+    end
     ##### Pruning #####
     delInd = Vector{Int}()
     n = length(Ψ) 
@@ -190,10 +204,10 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     end
     deleteat!(signs, delInd)
     if n == 0 || all(i -> i == 0, signs)
-        if !surf
-            return tensorGaussQuadrature(rec, gausslegendre(q)...)
-        else
+        if surf
             return Vector{SVector{D,Float64}}(), Vector{Float64}()
+        else
+            return tensorGaussQuadrature(rec, gausslegendre(q)...)
         end
     end
     deleteat!(Ψ, delInd)
