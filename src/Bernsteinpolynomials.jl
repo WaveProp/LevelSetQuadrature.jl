@@ -171,7 +171,7 @@ function Base.split(p::BernsteinPolynomial{D}, d::Integer, α=0.5) where{D}
 end
 
 ##### Conversion #####
-function renormalize(a::Vector{<:Real}, l::Real, r::Real)
+function rebase(a::Vector{<:Real}, l::Real, r::Real)
     n = length(a)
     ã = copy(a)
     for i in 0:n-2
@@ -181,13 +181,13 @@ function renormalize(a::Vector{<:Real}, l::Real, r::Real)
     ã
 end
 
-function renormalize(A::Array{<:Real,D}, rec::HyperRectangle{D}) where(D)
+function rebase(A::Array{<:Real,D}, rec::HyperRectangle{D}) where(D)
     L = low_corner(rec)
     R = high_corner(rec)
     Ã = copy(A)
     for d in 1:D 
         Ã = mapslices(Ã, dims=d) do a
-            renormalize(a, L[d], R[d])
+            rebase(a, L[d], R[d])
         end
     end
     Ã
@@ -195,6 +195,7 @@ end
 
 function power2Berstein(a::Array{<:Real,D}, U::HyperRectangle{D}=□(D), k=size(a).-1) where{D}
     b = zeros(k.+1)
+    a = rebase(a, U)
     for i in CartesianIndices(a)
         temp = zeros(Tuple([i[j] for j = 1:D]))
         for l in CartesianIndices(temp) 
@@ -207,6 +208,6 @@ function power2Berstein(a::Array{<:Real,D}, U::HyperRectangle{D}=□(D), k=size(
     BernsteinPolynomial(b, k, U)
 end
 
-export BernsteinPolynomial, ∇, renormalize, power2Berstein
+export BernsteinPolynomial, ∇, rebase, power2Berstein
 
 

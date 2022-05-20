@@ -245,14 +245,15 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     end
     Ψ̃ = Vector{BernsteinPolynomial{D-1}}()
     new_signs = Vector{Integer}()
-    ∇Ψ̃ = Vector{SVector{D,BernsteinPolynomial{D-1}}}()
+    ∇Ψ̃ = Vector{SVector{D-1,BernsteinPolynomial{D-1}}}()
     for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
         pos_neg = bound(∇ψ[k])[1] > 0 ? 1 : -1
-        ψL = lower_restrict(ψ, k); sL = Sgn(pos_neg, s, surf, -1); ∇ψL = svector(j->lower_restrict(∇ψ[j], k), D)
-        ψU = upper_restrict(ψ, k); sU = Sgn(pos_neg, s, surf, 1);  ∇ψU = svector(j->upper_restrict(∇ψ[j], k), D)
+        ψL = lower_restrict(ψ, k); sL = Sgn(pos_neg, s, surf, -1); ∇ψL = svector(j->j<k ? lower_restrict(∇ψ[j], k) : lower_restrict(∇ψ[j+1], k), D-1)
+        ψU = upper_restrict(ψ, k); sU = Sgn(pos_neg, s, surf, 1);  ∇ψU = svector(j->j<k ? upper_restrict(∇ψ[j], k) : upper_restrict(∇ψ[j+1], k), D-1)
         append!(Ψ̃, [ψL, ψU])
         append!(new_signs, [sL, sU])
         append!(∇Ψ̃, [∇ψL, ∇ψU])
+        # append!(∇Ψ̃, [∇(ψL), ∇(ψU)])
     end
     ###############################
 
