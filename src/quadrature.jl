@@ -55,7 +55,7 @@ function dim1NodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, L, U
         end
     else
         for ψ in Ψ
-            union!(roots, find_zero(ψ, (L, U)))
+            ψ(L) * ψ(U) < 0 && union!(roots, find_zero(ψ, (L, U)))
         end
     end
     sort!(roots)
@@ -98,7 +98,7 @@ function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}
         end
     end
     deleteat!(signs, delInd)
-    if n == 0 || all(i -> i == 0, signs)
+    if n == 0
         if surf
             return Vector{SVector{D,Float64}}(), Vector{Float64}()
         else
@@ -203,7 +203,7 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
         end
     end
     deleteat!(signs, delInd)
-    if n == 0 || all(i -> i == 0, signs)
+    if n == 0
         if surf
             return Vector{SVector{D,Float64}}(), Vector{Float64}()
         else
