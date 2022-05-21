@@ -76,7 +76,7 @@ end
 
 function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRectangle{D}, q, surf, ∇Ψ, level=0) where {D}
     @assert !surf || (D > 1)
-    if level ≥ D*5
+    if level ≥ D*10
         if surf
             return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
         else
@@ -148,7 +148,7 @@ function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}
     ###############################
 
     ##### Recursion in one less dimension #####
-    X, W = quadratureNodesWeights(Ψ̃, new_signs, section(rec, k), q, false, ∇Ψ̃, level)
+    X, W = quadratureNodesWeights(Ψ̃, new_signs, section(rec, k), q, false, ∇Ψ̃)
     nodes = Vector{SVector{D,Float64}}()
     weights = Vector{Float64}()
     for (x, w) in zip(X, W)
@@ -174,13 +174,13 @@ end
 function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vector{<:Integer}, q, surf, ∇Ψ, level=0) where{D}
     @assert !surf || (D > 1)
     rec = Ψ[1].domain
-    if level ≥ D*5
-        if surf
-            return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
-        else
-            return [center(rec)], prod(high_corner(rec).-low_corner(rec))
-        end
-    end
+    # if level ≥ D*10
+    #     if surf
+    #         return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
+    #     else
+    #         return [center(rec)], prod(high_corner(rec).-low_corner(rec))
+    #     end
+    # end
     ##### Pruning #####
     delInd = Vector{Int}()
     n = length(Ψ) 
@@ -272,7 +272,7 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     ###############################
 
     ##### Recursion in one less dimension #####
-    X, W = quadratureNodesWeights(Ψ̃, new_signs, q, false, ∇Ψ̃, level)
+    X, W = quadratureNodesWeights(Ψ̃, new_signs, q, false, ∇Ψ̃)
     nodes = Vector{SVector{D,Float64}}()
     weights = Vector{Float64}()
     for (x, w) in zip(X, W)

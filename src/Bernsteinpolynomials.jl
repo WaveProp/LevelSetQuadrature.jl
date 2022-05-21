@@ -1,4 +1,4 @@
-##### Bernstein Polynomials ##### 
+##### Bernstein Polynomials #####
 struct BernsteinPolynomial{D}
     coeffs::Array{<:Real,D}
     degree::NTuple{D,Integer}
