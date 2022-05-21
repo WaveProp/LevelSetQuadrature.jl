@@ -76,7 +76,10 @@ end
 
 function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRectangle{D}, q, surf, ∇Ψ, level=0) where {D}
     @assert !surf || (D > 1)
-    if level ≥ D*5
+    # FIXME: the maximum depth should be a parameter (and why should it depend
+    # on D)
+    if level ≥ 20*D
+        @warn "Maximum depth reached: resorting to low-order quadrature" maxlog=1
         if surf
             return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
         else
@@ -85,7 +88,7 @@ function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}
     end
     ##### Pruning #####
     delInd = Vector{Int}()
-    n = length(Ψ) 
+    n = length(Ψ)
     for (i, ψ) in enumerate(Ψ)
         δ = bound(ψ, rec)
         if abs(ψ(center(rec))) ≥ δ
@@ -174,7 +177,8 @@ end
 function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vector{<:Integer}, q, surf, ∇Ψ, level=0) where{D}
     @assert !surf || (D > 1)
     rec = Ψ[1].domain
-    if level ≥ D*5
+    if level ≥ D*20
+        @warn "Maximum depth reached: resorting to low-order quadrature" maxlog=1
         if surf
             return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
         else
@@ -183,7 +187,7 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     end
     ##### Pruning #####
     delInd = Vector{Int}()
-    n = length(Ψ) 
+    n = length(Ψ)
     for (i, ψ) in enumerate(Ψ)
         m, M = bound(ψ)
         if m ≥ 0
@@ -237,7 +241,7 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
         split_ax = argmax(high_corner(rec) - low_corner(rec))
         Ψ1 = Vector{BernsteinPolynomial{D}}()
         Ψ2 = Vector{BernsteinPolynomial{D}}()
-        for ψ in Ψ 
+        for ψ in Ψ
             ψ1, ψ2 = split(ψ, split_ax)
             push!(Ψ1, ψ1); push!(Ψ2, ψ2)
         end
@@ -250,7 +254,7 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     else
         c = svector(i->0.5, D); Grad = [[abs(∇ψ[j](c)) for j in 1:D] for ∇ψ in ∇Ψ]
         k = K[1]; s = sum(grad->grad[k]/sum(grad), Grad)
-        for k̃ in K[2:end] 
+        for k̃ in K[2:end]
             s̃ = sum(grad->grad[k̃]/sum(grad), Grad)
             if s̃ > s
                 k = k̃; s = s̃
