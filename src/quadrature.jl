@@ -1,19 +1,15 @@
-# TODO: change the name of V and document its various forms
-function V(x, k, y)
-    insert(x, k, y)
-end
-
-function V(x̂::SVector{<:Any,<:Linearization{N,T}},k,y::T) where {N,T}
+function StaticArrays.insert(x̂::SVector{<:Any,<:Linearization{N,T}},k,y::T) where {N,T}
     rec = first(x̂) |> domain
     ŷ = Linearization(y,zero(SVector{N,T}),zero(T),rec)
     insert(x̂,k,ŷ)
 end
 
-function V(x::Real,k,y::Real)
+function StaticArrays.insert(x::Real,k,y::Real)
     insert(SVector(x),k,y)
 end
 
-function Sgn(m, s, S, σ)
+# TODO: @dongchen explain this function?
+function sgn(m, s, S, σ)
     if m * s * σ > 0 || S
         if m * σ > 0
             return 1
@@ -25,7 +21,13 @@ function Sgn(m, s, S, σ)
     end
 end
 
-function tensorGaussQuadrature(rec::HyperRectangle{D}, GX, GW) where {D}
+"""
+    tensorquad(rec,x,w)
+
+Given a one-dimensional
+"""
+function tensorquad(rec::HyperRectangle{D}, GX, GW) where {D}
+    xl, xu = low_corner(rec), high_corner(rec)
     if D == 1
         nodes = (GX .+ 1.0) ./ 2.0 .* (high_corner(rec)[1] - low_corner(rec)[1]) .+ low_corner(rec)[1]
         weights = GW ./ 2.0 .* (high_corner(rec)[1] - low_corner(rec)[1])
@@ -34,12 +36,12 @@ function tensorGaussQuadrature(rec::HyperRectangle{D}, GX, GW) where {D}
         rec1 = section(rec, 1)
         nodes = Vector{SVector{D,Float64}}()
         weights = Vector{Float64}()
-        X, W = tensorGaussQuadrature(rec1, GX, GW)
+        X, W = tensorquad(rec1, GX, GW)
         for (x, w) in zip(X, W)
             Y = (GX .+ 1.0) ./ 2.0 * (high_corner(rec)[1] - low_corner(rec)[1]) .+ low_corner(rec)[1]
             Ω = GW ./ 2.0 .* (high_corner(rec)[1] - low_corner(rec)[1])
             for (y, ω) in zip(Y, Ω)
-                push!(nodes, V(x, 1, y))
+                push!(nodes, insert(x, 1, y))
                 push!(weights, w * ω)
             end
         end
@@ -105,7 +107,7 @@ function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}
         if surf
             return Vector{SVector{D,Float64}}(), Vector{Float64}()
         else
-            return tensorGaussQuadrature(rec, gausslegendre(q)...)
+            return tensorquad(rec, gausslegendre(q)...)
         end
     end
     deleteat!(Ψ, delInd)
@@ -132,12 +134,12 @@ function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}
         g = ∇ψ(center(rec))
         δ = [bound(x -> ∇ψ(x)[j], rec) for j = 1:D]
         if abs(g[k]) > δ[k] && sum((g .+ δ) .^ 2) / (g[k] - δ[k])^2 < 20
-            ψL = x -> ψ(V(x, k, low_corner(rec)[k]))
-            sL = Sgn(g[k], s, surf, -1)
-            ∇ψL = x -> deleteat(∇ψ(V(x, k, low_corner(rec)[k])), k)
-            ψU = x -> ψ(V(x, k, high_corner(rec)[k]))
-            sU = Sgn(g[k], s, surf, 1)
-            ∇ψU = x -> deleteat(∇ψ(V(x, k, high_corner(rec)[k])), k)
+            ψL = x -> ψ(insert(x, k, low_corner(rec)[k]))
+            sL = sgn(g[k], s, surf, -1)
+            ∇ψL = x -> deleteat(∇ψ(insert(x, k, low_corner(rec)[k])), k)
+            ψU = x -> ψ(insert(x, k, high_corner(rec)[k]))
+            sU = sgn(g[k], s, surf, 1)
+            ∇ψU = x -> deleteat(∇ψ(insert(x, k, high_corner(rec)[k])), k)
             append!(Ψ̃, [ψL, ψU])
             append!(new_signs, [sL, sU])
             append!(∇Ψ̃, [∇ψL, ∇ψU])
@@ -156,16 +158,16 @@ function quadratureNodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}
     weights = Vector{Float64}()
     for (x, w) in zip(X, W)
         if surf
-            y = find_zero(y -> Ψ[1](V(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
-            x̃ = V(x, k, y)
+            y = find_zero(y -> Ψ[1](insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
+            x̃ = insert(x, k, y)
             ∇ϕ = ∇Ψ[1](x̃)
             push!(nodes, x̃)
             push!(weights, w * LinearAlgebra.norm(∇ϕ) / abs(∇ϕ[k]))
         else
-            Φ = [y -> ψ(V(x, k, y)) for ψ in Ψ]
+            Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
             Y, Ω = dim1NodesWeights(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], q, false)
             for (y, ω) in zip(Y, Ω)
-                push!(nodes, V(x, k, y))
+                push!(nodes, insert(x, k, y))
                 push!(weights, w * ω)
             end
         end
@@ -211,7 +213,7 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
         if surf
             return Vector{SVector{D,Float64}}(), Vector{Float64}()
         else
-            return tensorGaussQuadrature(rec, gausslegendre(q)...)
+            return tensorquad(rec, gausslegendre(q)...)
         end
     end
     deleteat!(Ψ, delInd)
@@ -266,8 +268,8 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     ∇Ψ̃ = Vector{SVector{D-1,BernsteinPolynomial{D-1}}}()
     for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
         pos_neg = bound(∇ψ[k])[1] > 0 ? 1 : -1
-        ψL = lower_restrict(ψ, k); sL = Sgn(pos_neg, s, surf, -1); ∇ψL = svector(j->j<k ? lower_restrict(∇ψ[j], k) : lower_restrict(∇ψ[j+1], k), D-1)
-        ψU = upper_restrict(ψ, k); sU = Sgn(pos_neg, s, surf, 1);  ∇ψU = svector(j->j<k ? upper_restrict(∇ψ[j], k) : upper_restrict(∇ψ[j+1], k), D-1)
+        ψL = lower_restrict(ψ, k); sL = sgn(pos_neg, s, surf, -1); ∇ψL = svector(j->j<k ? lower_restrict(∇ψ[j], k) : lower_restrict(∇ψ[j+1], k), D-1)
+        ψU = upper_restrict(ψ, k); sU = sgn(pos_neg, s, surf, 1);  ∇ψU = svector(j->j<k ? upper_restrict(∇ψ[j], k) : upper_restrict(∇ψ[j+1], k), D-1)
         append!(Ψ̃, [ψL, ψU])
         append!(new_signs, [sL, sU])
         append!(∇Ψ̃, [∇ψL, ∇ψU])
@@ -281,16 +283,16 @@ function quadratureNodesWeights(Ψ::Vector{BernsteinPolynomial{D}}, signs::Vecto
     weights = Vector{Float64}()
     for (x, w) in zip(X, W)
         if surf
-            y = find_zero(y -> Ψ[1](V(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
-            x̃ = V(x, k, y)
+            y = find_zero(y -> Ψ[1](insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
+            x̃ = insert(x, k, y)
             ∇ϕ = [∇Ψ[1][j](x̃) for j = 1:D]
             push!(nodes, x̃)
             push!(weights, w * LinearAlgebra.norm(∇ϕ) / abs(∇ϕ[k]))
         else
-            Φ = [y -> ψ(V(x, k, y)) for ψ in Ψ]
+            Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
             Y, Ω = dim1NodesWeights(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], q, false)
             for (y, ω) in zip(Y, Ω)
-                push!(nodes, V(x, k, y))
+                push!(nodes, insert(x, k, y))
                 push!(weights, w * ω)
             end
         end

@@ -2,7 +2,7 @@ using Test
 using LevelSetQuadrature
 using SpecialFunctions
 
-using LevelSetQuadrature: svector, V
+using LevelSetQuadrature: svector
 
 @testset "Hypersphere area/volume" begin
     sphere_volume(r,n) = π^(n/2)/gamma(n/2+1)*r^n
