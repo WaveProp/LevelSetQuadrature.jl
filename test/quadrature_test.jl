@@ -17,13 +17,13 @@ using LevelSetQuadrature: svector
             # boundary of the surface, so it has to be taken slighly larger for
             # the moment
             U = HyperRectangle(1.1*svector(i->-r,n),1.1*svector(i->r,n))
-            ϕ(x)  = sum(x .* x) - r^2
-            ∇ϕ(x) = svector(i->2*x[i],n)
+            ϕ  = (x) -> sum(x .* x) - r^2
+            ∇ϕ = (x) -> svector(i->2*x[i],n)
             # volume test
-            X, W = quadratureNodesWeights([ϕ], [-1], U, p, false, [∇ϕ])
+            X, W = quadgen(ϕ, ∇ϕ, U, -1;order=p)
             @test isapprox(sum(W),sphere_volume(r,n);atol)
             # area test
-            X, W = quadratureNodesWeights([ϕ], [-1], U, p, true, [∇ϕ])
+            X, W = quadgen(ϕ, ∇ϕ, U,0;order=p)
             @test isapprox(sum(W),sphere_area(r,n);atol)
         end
     end

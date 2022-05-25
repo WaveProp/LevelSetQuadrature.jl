@@ -18,9 +18,17 @@ import WavePropBase:
     svector
 
 include("linearization.jl")
-include("Bernsteinpolynomials.jl")
+include("bernsteinpolynomials.jl")
 include("quadrature.jl")
 
-export HyperRectangle, Linearization, quadratureNodesWeights
+export
+    HyperRectangle,
+    Linearization,
+    _quadgen,
+    quadgen,
+    BernsteinPolynomial,
+    ∇,
+    rebase,
+    power2Berstein
 
 end # module
