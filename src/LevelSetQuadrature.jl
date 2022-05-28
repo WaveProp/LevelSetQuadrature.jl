@@ -16,9 +16,11 @@ import WavePropBase:
     UniformCartesianMesh,
     NodeIterator,
     svector,
-    order
+    order,
+    ambient_dimension
 
 include("linearization.jl")
+include("implicitdomain.jl")
 include("bernsteinpolynomials.jl")
 include("quadrature.jl")
 

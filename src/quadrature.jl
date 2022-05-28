@@ -1,23 +1,4 @@
 """
-    sgn(m,s,surface,side)
-
-Compute the sign of the upper and lower restrictions of a function `ψ` with sign
-`s`. The `side` variable is eithe `1` for the upper restriction, or `-1` for the
-lower restriction, and `m` is the sign of `∇ψ ⋅ eₖ`.
-"""
-function sgn(m, s, surface, side)
-    if m*s*side > 0 || surface
-        if m * side > 0
-            return 1
-        else
-            return -1
-        end
-    else
-        return 0
-    end
-end
-
-"""
     tensorquad(rec::HyperRectangle,x,w)
 
 Given the one-dimensional quadrature nodes `x` and  weights `w` for integrating
@@ -80,12 +61,130 @@ end
 TODO: extensively document this function
 """
 function quadgen(ϕ,∇ϕ,U,s;order=5,maxdepth=20,maxgradient=20)
+    Ω    = ImplicitDomain([ϕ],[∇ϕ],[s],U)
+    quadgen(Ω;order,maxdepth,maxgradient)
+    # par     = Parameters(maxdepth,maxgradient)
+    # x1d,w1d = gausslegendre(order)
+    # # normalize quadrature from [-1,1] to [0,1] interval
+    # x1d .= (x1d .+ 1) ./ 2
+    # w1d .= w1d ./ 2
+    # _quadgen([ϕ],[s],U,s==0,[∇ϕ], x1d, w1d, 0, par)
+end
+
+function quadgen(Ω::ImplicitDomain;order=5,maxdepth=20,maxgradient=20)
     par     = Parameters(maxdepth,maxgradient)
     x1d,w1d = gausslegendre(order)
     # normalize quadrature from [-1,1] to [0,1] interval
     x1d .= (x1d .+ 1) ./ 2
     w1d .= w1d ./ 2
-    _quadgen([ϕ],[s<=0 ? -1 : 1], U, s==0, [∇ϕ], x1d, w1d, 0, par)
+    surf = all(iszero,Ω.signs)
+    _quadgen(Ω,surf,x1d,w1d,0,par)
+end
+
+function _quadgen(Ω::ImplicitDomain,surf,x1d, w1d, level, par::Parameters)
+    rec = Ω.rec
+    Ψ   = Ω.Ψ
+    ∇Ψ  = Ω.∇Ψ
+    signs  = Ω.signs
+    D   = ambient_dimension(rec)
+    @assert !surf || (D > 1)
+    if level ≥ par.maxdepth
+        @warn "Maximum depth reached: resorting to low-order quadrature" maxlog=1
+        if surf
+            return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
+        else
+            return [center(rec)], prod(high_corner(rec).-low_corner(rec))
+        end
+    end
+    ##### Pruning #####
+    # TODO: can't we prune when we are pushing to Ψ instead of pushing it and
+    # then deleting the entries?
+    delInd = Vector{Int}()
+    for (i, ψ) in enumerate(Ψ)
+        si = signs[i]
+        t = cell_type(ψ,si,rec)
+        if t == whole_cell
+            # intersection is the whole rec, so ψ can be prune
+            # @info "Whole cell"
+            append!(delInd, i)
+        elseif t == empty_cell
+            # intersection is empty, return immediately
+            return Vector{SVector{D,Float64}}(), Vector{Float64}()
+        end
+    end
+    deleteat!(signs, delInd)
+    deleteat!(Ψ, delInd)
+    deleteat!(∇Ψ, delInd)
+    if isempty(Ψ)
+        if surf
+            return Vector{SVector{D,Float64}}(), Vector{Float64}()
+        else
+            return tensorquad(rec,x1d,w1d)
+        end
+    end
+    ###################
+
+    ##### Base case #####
+    if D == 1
+        return dim1quad(Ψ, signs, low_corner(rec)[1], high_corner(rec)[1], x1d, w1d, true)
+        # return dim1quad(Ω, x1d, w1d, true)
+    end
+    ######################
+
+    ##### Determine direction #####
+    k = argmax(abs.(∇Ψ[1](center(rec))))
+    Ψ̃ = Vector{Function}()
+    new_signs = Vector{Integer}()
+    ∇Ψ̃ = Vector{Function}()
+    for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
+        g = ∇ψ(center(rec))
+        δ = [bound(x -> ∇ψ(x)[j], rec) for j = 1:D]
+        if abs(g[k]) > δ[k] && sum((g .+ δ) .^ 2) / (g[k] - δ[k])^2 < par.maxgradient
+            # lower face
+            ψL = lower_restrict(ψ,rec,k)
+            sL = sgn(g[k], s, surf, -1)
+            ∇ψL = x -> deleteat(∇ψ(insert(x, k, low_corner(rec)[k])), k)
+            # upper face
+            ψU = upper_restrict(ψ,rec,k)
+            sU = sgn(g[k], s, surf, 1)
+            ∇ψU = x -> deleteat(∇ψ(insert(x, k, high_corner(rec)[k])), k)
+            append!(Ψ̃, [ψL, ψU])
+            append!(new_signs, [sL, sU])
+            append!(∇Ψ̃, [∇ψL, ∇ψU])
+        else
+            rec1, rec2 = split(rec)
+            Ω1 = ImplicitDomain(copy(Ψ),copy(∇Ψ),copy(signs),rec1)
+            Ω2 = ImplicitDomain(copy(Ψ),copy(∇Ψ),copy(signs),rec2)
+            X1, W1 = _quadgen(Ω1, surf, x1d, w1d, level+1, par)
+            X2, W2 = _quadgen(Ω2, surf, x1d, w1d, level+1, par)
+            return (append!(X1, X2), append!(W1, W2))
+        end
+    end
+    ###############################
+
+    ##### Recursion in one less dimension #####
+    Ω̃    = ImplicitDomain(Ψ̃,∇Ψ̃,new_signs,section(rec, k))
+    X, W = _quadgen(Ω̃, false, x1d, w1d, level, par)
+    nodes = Vector{SVector{D,Float64}}()
+    weights = Vector{Float64}()
+    for (x, w) in zip(X, W)
+        if surf
+            y = find_zero(y -> Ψ[1](insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
+            x̃ = insert(x, k, y)
+            ∇ϕ = ∇Ψ[1](x̃)
+            push!(nodes, x̃)
+            push!(weights, w * norm(∇ϕ) / abs(∇ϕ[k]))
+        else
+            Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
+            Y, Ω = dim1quad(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)
+            for (y, ω) in zip(Y, Ω)
+                push!(nodes, insert(x, k, y))
+                push!(weights, w * ω)
+            end
+        end
+    end
+    ###########################################
+    return nodes, weights
 end
 
 function _quadgen(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRectangle{D}, surf, ∇Ψ, x1d, w1d, level, par::Parameters) where {D}
@@ -128,7 +227,7 @@ function _quadgen(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRe
 
     ##### Base case #####
     if D == 1
-        return dim1quad(Ψ, signs, low_corner(rec)[1], high_corner(rec)[1], x1d, w1d)
+        return dim1quad(Ψ, signs, low_corner(rec)[1], high_corner(rec)[1], x1d, w1d, true)
     end
     ######################
 
@@ -355,4 +454,23 @@ end
 
 function StaticArrays.insert(x::Real,k,y::Real)
     insert(SVector(x),k,y)
+end
+
+"""
+    sgn(m,s,surface,side)
+
+Compute the sign of the upper and lower restrictions of a function `ψ` with sign
+`s`. The `side` variable is eithe `1` for the upper restriction, or `-1` for the
+lower restriction, and `m` is the sign of `∇ψ ⋅ eₖ`.
+"""
+function sgn(m, s, surface, side)
+    if m*s*side > 0 || surface
+        if m * side > 0
+            return 1
+        else
+            return -1
+        end
+    else
+        return 0
+    end
 end

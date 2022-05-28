@@ -20,11 +20,15 @@ using LevelSetQuadrature: svector
             ϕ  = (x) -> sum(x .* x) - r^2
             ∇ϕ = (x) -> svector(i->2*x[i],n)
             # volume test
-            X, W = quadgen(ϕ, ∇ϕ, U, -1;order=p)
-            @test isapprox(sum(W),sphere_volume(r,n);atol)
-            # area test
-            X, W = quadgen(ϕ, ∇ϕ, U,0;order=p)
-            @test isapprox(sum(W),sphere_area(r,n);atol)
+            @testset "volume" begin
+                X, W = quadgen(ϕ, ∇ϕ, U, -1;order=p)
+                @test isapprox(sum(W),sphere_volume(r,n);atol)
+            end
+            @testset "surface" begin
+                # area test
+                X, W = quadgen(ϕ, ∇ϕ, U,0;order=p)
+                @test isapprox(sum(W),sphere_area(r,n);atol)
+            end
         end
     end
 end
