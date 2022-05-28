@@ -9,6 +9,7 @@ import WavePropBase:
     HyperRectangle,
     section,
     center,
+    width,
     domain,
     low_corner,
     high_corner,
