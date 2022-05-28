@@ -2,7 +2,7 @@
 
 struct ImplicitDomain{N,T}
     Ψ::Vector{<:Function}
-    ∇Ψ::Vector{<:Function}
+    ∇Ψ::Vector{SVector{N,<:Function}}
     signs::Vector{Int}
     rec::HyperRectangle{N,T}
     celltype::CellType
@@ -57,19 +57,19 @@ function cell_type(ψ, s, rec)
     end
 end
 
-function restrict(Ω, k, surf)
+function restrict(Ω::ImplicitDomain{N,T}, k, surf) where {N,T}
     Ψ = Ω.Ψ
     ∇Ψ = Ω.∇Ψ
     signs = Ω.signs
     rec = Ω.rec
     xc = center(rec)
     Ψ̃  = Function[]
-    ∇Ψ̃ = Function[]
+    ∇Ψ̃ = SVector{N-1,Function}[]
     new_signs = empty(signs)
     for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
         # why bound? dont we know that ∇Ψ[k] has a fixed sign on direction k?
         # pos_neg = bound(∇ψ[k],rec)[1] > 0 ? 1 : -1
-        pos_neg = ∇ψ(xc)[k] > 0 ? 1 : -1 # use sign?
+        pos_neg = ∇ψ[k](xc) > 0 ? 1 : -1 # use sign?
         ψL = lower_restrict(ψ, rec, k)
         sL = sgn(pos_neg, s, surf, -1)
         ∇ψL = lower_restrict_grad(∇ψ, rec, k)
@@ -95,12 +95,15 @@ function upper_restrict(ψ::Function,rec,k)
     x -> ψ(insert(x, k, a))
 end
 
-function lower_restrict_grad(∇ψ, rec, k)
+function lower_restrict_grad(∇ψ::SVector{N}, rec, k) where {N}
     a = low_corner(rec)[k]
-    (x) -> deleteat(∇ψ(insert(x, k, a)), k)
+    ∇ψ′ = deleteat(∇ψ,k)
+    (x) -> ∇ψ′(insert(x, k, a))
+    svector(d -> (x) -> ∇ψ′[d](insert(x, k, a)), N-1)
 end
 
-function upper_restrict_grad(∇ψ, rec, k)
-    a = high_corner(rec)[k]
-    (x) -> deleteat(∇ψ(insert(x, k, a)), k)
+function upper_restrict_grad(∇ψ::SVector{N}, rec, k) where {N}
+    a   = high_corner(rec)[k]
+    ∇ψ′ = deleteat(∇ψ,k)
+    svector(d -> (x) -> ∇ψ′[d](insert(x, k, a)), N-1)
 end

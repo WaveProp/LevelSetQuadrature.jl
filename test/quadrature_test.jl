@@ -18,7 +18,7 @@ using LevelSetQuadrature: svector
             # the moment
             U = HyperRectangle(1.1*svector(i->-r,n),1.1*svector(i->r,n))
             ϕ  = (x) -> sum(x .* x) - r^2
-            ∇ϕ = (x) -> svector(i->2*x[i],n)
+            ∇ϕ = svector(i-> (x) -> 2*x[i],n)
             # volume test
             @testset "volume" begin
                 X, W = quadgen(ϕ, ∇ϕ, U, -1;order=p)

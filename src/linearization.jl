@@ -48,10 +48,15 @@ domain(l::Linearization) = l.rec
 half_width(l::Linearization) = half_width(domain(l))
 
 function bound(l::Linearization)
+    α = value(l)
     δ = half_width(l)
     β = gradient(l)
-    dot(abs.(β), δ) + remainder(l)
+    Δ = dot(abs.(β), δ) + remainder(l)
+    α - Δ, α + Δ
 end
+
+bound(l::SVector{<:Any,<:Linearization}) = bound.(l) # for gradients
+
 
 ## addition
 Base.:+(u::Linearization, c::Real) = Linearization(value(u) + c, gradient(u), remainder(u), domain(u))
@@ -124,7 +129,6 @@ This method can be overloaded for specific types `typeof(f)` if a more efficient
 way of computing the bound is known (e.g. if `f` is affine).
 """
 function bound(f::Function, rec::HyperRectangle{D}) where {D}
-    # approximate_bound(f,rec)
     f̂ = linearization(f, rec)
     bound(f̂)
 end

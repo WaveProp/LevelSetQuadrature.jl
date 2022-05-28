@@ -84,7 +84,7 @@ function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters)
     D   = ambient_dimension(rec)
     @assert !surf || (D > 1)
     if level ≥ par.maxdepth
-        @warn "Maximum depth reached: resorting to low-order quadrature" maxlog=1
+        @warn "Maximum depth reached: resorting to low-order quadrature"
         if surf
             return [xc], [prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)]
         else
@@ -111,7 +111,9 @@ function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters)
 
     # find a heigh direction such that all of ∇Ψ are (provably) bounded away
     # from zero.
-    bnds    = map(∇ψ -> bound(∇ψ,rec),∇Ψ)
+    bnds    = map(∇Ψ) do ∇ψ
+        ntuple(d->bound(∇ψ[d],rec),D)
+    end
     isvalid = ntuple(D) do dim
         all(bnds) do bnd
             (prod(bnd[dim])≥0) &&
@@ -131,8 +133,10 @@ function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters)
     # is the least steep overall by maximizing the minimum of the derivative on
     # direction k over all functions
     ∇Ψc = map(∇Ψ) do ∇ψ
-        ∇ψc = abs.(∇ψ(xc))
-        ∇ψc/norm(∇ψc)
+        ntuple(D) do d
+            ∇ψc = abs.(∇ψ[d](xc))
+            ∇ψc/norm(∇ψc)
+        end
     end
     k = argmax(1:D) do dim
         if isvalid[dim]
@@ -149,9 +153,12 @@ function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters)
         if surf
             # FIXME: if we get here, are we guaranteed to have only one Ψ? If
             # so, that should probably be checked...
-            y = find_zero(y -> Ψ[1](insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
+            @assert length(Ψ) == 1
+            ψ = first(Ψ)
+            ∇ψ = first(∇Ψ)
+            y = find_zero(y -> ψ(insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
             x̃ = insert(x, k, y)
-            ∇ϕ = ∇Ψ[1](x̃)
+            ∇ϕ = map(f->f(x̃),∇ψ)
             push!(nodes, x̃)
             push!(weights, w * norm(∇ϕ) / abs(∇ϕ[k]))
         else
@@ -167,14 +174,18 @@ function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters)
     return nodes, weights
 end
 
-function quadgen(ϕ::BernsteinPolynomial{D},s;order=5,maxdepth=20,maxgradient=20) where {D}
-    par     = Parameters(maxdepth,maxgradient)
+function quadgen(ϕ::BernsteinPolynomial{D},s;order=4,maxdepth=20,maxslope=20) where {D}
+    # rec = domain(ϕ)
+    ∇ϕ  = gradient(ϕ)
+    # Ω  = ImplicitDomain([ϕ],[∇ϕ],[s],rec)
+    # quadgen(Ω;kwargs...)
+    par     = Parameters(maxdepth,maxslope)
     x1d,w1d = gausslegendre(order)
     # normalize quadrature from [-1,1] to [0,1] interval
     x1d .= (x1d .+ 1) ./ 2
     w1d .= w1d ./ 2
     #
-    ∇ϕ = gradient(ϕ)
+
     U  = ϕ.domain
     _quadgen([ϕ],[s<=0 ? -1 : 1], U, s==0, [∇ϕ], x1d, w1d, 0, par)
 end

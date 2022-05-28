@@ -10,6 +10,7 @@ struct BernsteinPolynomial{D,T}
 end
 
 order(p::BernsteinPolynomial) = p.degree
+domain(p::BernsteinPolynomial) = p.domain
 
 """
     reference_cube(::Val{D})
@@ -79,14 +80,15 @@ end
 function Base.show(io::IO, p::BernsteinPolynomial)
     lb = low_corner(p.domain)
     ub = high_corner(p.domain)
-    print(io, "Bernestein order ", order(p), " polynomial on ",
+    print(io, "Bernestein polynomial of order ", order(p), " on ",
           '[', lb[1], ',', ub[1], ']')
     for i = 2:length(lb)
         print(io, " × [", lb[i], ',', ub[i], ']')
     end
 end
 
-function bound(p::BernsteinPolynomial)
+function bound(p::BernsteinPolynomial, rec=domain(p))
+    @assert domain(p) == rec # maybe it makes sense to rescale p if domain(p) is not rec?
     M = maximum(p.coeffs)
     m = minimum(p.coeffs)
     if M < 0 && prod(size(p.coeffs)) < prod(p.degree.+1)
