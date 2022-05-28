@@ -63,12 +63,6 @@ TODO: extensively document this function
 function quadgen(ϕ,∇ϕ,U,s;order=5,maxdepth=20,maxgradient=20)
     Ω    = ImplicitDomain([ϕ],[∇ϕ],[s],U)
     quadgen(Ω;order,maxdepth,maxgradient)
-    # par     = Parameters(maxdepth,maxgradient)
-    # x1d,w1d = gausslegendre(order)
-    # # normalize quadrature from [-1,1] to [0,1] interval
-    # x1d .= (x1d .+ 1) ./ 2
-    # w1d .= w1d ./ 2
-    # _quadgen([ϕ],[s],U,s==0,[∇ϕ], x1d, w1d, 0, par)
 end
 
 function quadgen(Ω::ImplicitDomain;order=5,maxdepth=20,maxgradient=20)
@@ -81,7 +75,7 @@ function quadgen(Ω::ImplicitDomain;order=5,maxdepth=20,maxgradient=20)
     _quadgen(Ω,surf,x1d,w1d,0,par)
 end
 
-function _quadgen(Ω::ImplicitDomain,surf,x1d, w1d, level, par::Parameters)
+function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters) where {N,T}
     rec = Ω.rec
     Ψ   = Ω.Ψ
     ∇Ψ  = Ω.∇Ψ
@@ -96,45 +90,28 @@ function _quadgen(Ω::ImplicitDomain,surf,x1d, w1d, level, par::Parameters)
             return [center(rec)], prod(high_corner(rec).-low_corner(rec))
         end
     end
-    ##### Pruning #####
-    # TODO: can't we prune when we are pushing to Ψ instead of pushing it and
-    # then deleting the entries?
-    delInd = Vector{Int}()
-    for (i, ψ) in enumerate(Ψ)
-        si = signs[i]
-        t = cell_type(ψ,si,rec)
-        if t == whole_cell
-            # intersection is the whole rec, so ψ can be prune
-            # @info "Whole cell"
-            append!(delInd, i)
-        elseif t == empty_cell
-            # intersection is empty, return immediately
-            return Vector{SVector{D,Float64}}(), Vector{Float64}()
-        end
-    end
-    deleteat!(signs, delInd)
-    deleteat!(Ψ, delInd)
-    deleteat!(∇Ψ, delInd)
-    if isempty(Ψ)
+
+    ctype = cell_type(Ω)
+    # check for limiting cases of empty or whole cells
+    if ctype == empty_cell
+        return Vector{SVector{D,T}}(), Vector{T}()
+    elseif ctype == whole_cell
         if surf
-            return Vector{SVector{D,Float64}}(), Vector{Float64}()
+            return SVector{D,T}[], T[]
         else
             return tensorquad(rec,x1d,w1d)
         end
     end
-    ###################
 
-    ##### Base case #####
+    # base case
     if D == 1
         return dim1quad(Ψ, signs, low_corner(rec)[1], high_corner(rec)[1], x1d, w1d, true)
-        # return dim1quad(Ω, x1d, w1d, true)
     end
-    ######################
 
-    ##### Determine direction #####
+    # find a heigh direction
     k = argmax(abs.(∇Ψ[1](center(rec))))
     Ψ̃ = Vector{Function}()
-    new_signs = Vector{Integer}()
+    new_signs = Vector{Int}()
     ∇Ψ̃ = Vector{Function}()
     for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
         g = ∇ψ(center(rec))
@@ -154,7 +131,7 @@ function _quadgen(Ω::ImplicitDomain,surf,x1d, w1d, level, par::Parameters)
         else
             rec1, rec2 = split(rec)
             Ω1 = ImplicitDomain(copy(Ψ),copy(∇Ψ),copy(signs),rec1)
-            Ω2 = ImplicitDomain(copy(Ψ),copy(∇Ψ),copy(signs),rec2)
+            Ω2 = ImplicitDomain(Ψ,copy(∇Ψ),copy(signs),rec2)
             X1, W1 = _quadgen(Ω1, surf, x1d, w1d, level+1, par)
             X2, W2 = _quadgen(Ω2, surf, x1d, w1d, level+1, par)
             return (append!(X1, X2), append!(W1, W2))
@@ -165,105 +142,8 @@ function _quadgen(Ω::ImplicitDomain,surf,x1d, w1d, level, par::Parameters)
     ##### Recursion in one less dimension #####
     Ω̃    = ImplicitDomain(Ψ̃,∇Ψ̃,new_signs,section(rec, k))
     X, W = _quadgen(Ω̃, false, x1d, w1d, level, par)
-    nodes = Vector{SVector{D,Float64}}()
-    weights = Vector{Float64}()
-    for (x, w) in zip(X, W)
-        if surf
-            y = find_zero(y -> Ψ[1](insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
-            x̃ = insert(x, k, y)
-            ∇ϕ = ∇Ψ[1](x̃)
-            push!(nodes, x̃)
-            push!(weights, w * norm(∇ϕ) / abs(∇ϕ[k]))
-        else
-            Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
-            Y, Ω = dim1quad(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)
-            for (y, ω) in zip(Y, Ω)
-                push!(nodes, insert(x, k, y))
-                push!(weights, w * ω)
-            end
-        end
-    end
-    ###########################################
-    return nodes, weights
-end
-
-function _quadgen(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRectangle{D}, surf, ∇Ψ, x1d, w1d, level, par::Parameters) where {D}
-    @assert !surf || (D > 1)
-    if level ≥ par.maxdepth
-        @warn "Maximum depth reached: resorting to low-order quadrature" maxlog=1
-        if surf
-            return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
-        else
-            return [center(rec)], prod(high_corner(rec).-low_corner(rec))
-        end
-    end
-    ##### Pruning #####
-    # TODO: can't we prune when we are pushing to Ψ instead of pushing it and
-    # then deleting the entries?
-    delInd = Vector{Int}()
-    for (i, ψ) in enumerate(Ψ)
-        si = signs[i]
-        t = cell_type(ψ,si,rec)
-        if t == whole_cell
-            # intersection is the whole rec, so ψ can be prune
-            # @info "Whole cell"
-            append!(delInd, i)
-        elseif t == empty_cell
-            # intersection is empty, return immediately
-            return Vector{SVector{D,Float64}}(), Vector{Float64}()
-        end
-    end
-    deleteat!(signs, delInd)
-    deleteat!(Ψ, delInd)
-    deleteat!(∇Ψ, delInd)
-    if isempty(Ψ)
-        if surf
-            return Vector{SVector{D,Float64}}(), Vector{Float64}()
-        else
-            return tensorquad(rec,x1d,w1d)
-        end
-    end
-    ###################
-
-    ##### Base case #####
-    if D == 1
-        return dim1quad(Ψ, signs, low_corner(rec)[1], high_corner(rec)[1], x1d, w1d, true)
-    end
-    ######################
-
-    ##### Determine direction #####
-    k = argmax(abs.(∇Ψ[1](center(rec))))
-    Ψ̃ = Vector{Function}()
-    new_signs = Vector{Integer}()
-    ∇Ψ̃ = Vector{Function}()
-    for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
-        g = ∇ψ(center(rec))
-        δ = [bound(x -> ∇ψ(x)[j], rec) for j = 1:D]
-        if abs(g[k]) > δ[k] && sum((g .+ δ) .^ 2) / (g[k] - δ[k])^2 < par.maxgradient
-            # lower face
-            ψL = lower_restrict(ψ,rec,k)
-            sL = sgn(g[k], s, surf, -1)
-            ∇ψL = x -> deleteat(∇ψ(insert(x, k, low_corner(rec)[k])), k)
-            # upper face
-            ψU = upper_restrict(ψ,rec,k)
-            sU = sgn(g[k], s, surf, 1)
-            ∇ψU = x -> deleteat(∇ψ(insert(x, k, high_corner(rec)[k])), k)
-            append!(Ψ̃, [ψL, ψU])
-            append!(new_signs, [sL, sU])
-            append!(∇Ψ̃, [∇ψL, ∇ψU])
-        else
-            rec1, rec2 = split(rec)
-            X1, W1 = _quadgen(copy(Ψ), copy(signs), rec1, surf, copy(∇Ψ), x1d, w1d, level+1, par)
-            X2, W2 = _quadgen(Ψ, signs, rec2, surf, ∇Ψ, x1d, w1d, level+1, par)
-            return (append!(X1, X2), append!(W1, W2))
-        end
-    end
-    ###############################
-
-    ##### Recursion in one less dimension #####
-    X, W = _quadgen(Ψ̃, new_signs, section(rec, k), false, ∇Ψ̃, x1d, w1d, level, par)
-    nodes = Vector{SVector{D,Float64}}()
-    weights = Vector{Float64}()
+    nodes = Vector{SVector{D,T}}()
+    weights = Vector{T}()
     for (x, w) in zip(X, W)
         if surf
             y = find_zero(y -> Ψ[1](insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
@@ -290,21 +170,6 @@ end
 
 function upper_restrict(ψ::Function,rec,k)
     x -> ψ(insert(x, k, high_corner(rec)[k]))
-end
-
-@enum CellType empty_cell whole_cell cut_cell
-
-function cell_type(ψ,s,rec)
-    δ = bound(ψ, rec)
-    ψc = ψ(center(rec))
-    abs(ψc) ≥ δ || (return cut_cell)
-    if s * ψc ≥ 0
-        # intersection is the whole rec
-        return whole_cell
-    else
-        # intersection is empty, return immediately
-        return empty_cell
-    end
 end
 
 function quadgen(ϕ::BernsteinPolynomial{D},s;order=5,maxdepth=20,maxgradient=20) where {D}
