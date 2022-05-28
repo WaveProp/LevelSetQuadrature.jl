@@ -3,13 +3,13 @@ using LevelSetQuadrature
 using StaticArrays
 using SpecialFunctions
 
-using LevelSetQuadrature: svector, low_corner, high_corner, center
+using LevelSetQuadrature: svector, low_corner, high_corner, center, gradient
 
 U = HyperRectangle((0.,-1.,-1.), (2.,2.,3.))
 L = low_corner(U); H = high_corner(U)
 a = zeros(3,3,3)
 a[1,1,1] = -1.; a[3,1,1] = 1.; a[1,3,1] = 2.; a[1,1,3] = 3.
-ϕ = power2Berstein(a, U) # x1^2 + 2x2^2 + 3x3^2 - 1
+ϕ = power2bernstein(a, U) # x1^2 + 2x2^2 + 3x3^2 - 1
 N = 5 # number of tests of each category
 
 @testset "Algebra tests" begin
@@ -23,7 +23,7 @@ N = 5 # number of tests of each category
     end
 
     @testset "Derivation tests" begin
-        ∇ϕ = ∇(ϕ)
+        ∇ϕ = gradient(ϕ)
         ∇f = SVector(x->2x[1], x->4x[2], x->6x[3])
         for _ in 1:N
             x = @SVector rand(3)
@@ -61,7 +61,7 @@ end
             for i in 0:n-1
                 c[2*3^i+1] = 1
             end
-            ϕ = power2Berstein(c, U)
+            ϕ = power2bernstein(c, U)
             # volume test
             X, W = quadgen(ϕ, -1; order=p)
             @test isapprox(sum(W),sphere_volume(r,n);atol)

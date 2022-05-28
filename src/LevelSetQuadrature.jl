@@ -15,7 +15,8 @@ import WavePropBase:
     half_width,
     UniformCartesianMesh,
     NodeIterator,
-    svector
+    svector,
+    order
 
 include("linearization.jl")
 include("bernsteinpolynomials.jl")
@@ -23,12 +24,9 @@ include("quadrature.jl")
 
 export
     HyperRectangle,
-    Linearization,
-    _quadgen,
     quadgen,
+    # integrate,
     BernsteinPolynomial,
-    ∇,
-    rebase,
-    power2Berstein
+    power2bernstein
 
 end # module

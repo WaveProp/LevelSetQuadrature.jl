@@ -1,4 +1,8 @@
-##### Bernstein Polynomials #####
+"""
+    BernsteinPolynomial{D,T}
+
+TODO: docstring
+"""
 struct BernsteinPolynomial{D,T}
     coeffs::Array{T,D}
     degree::NTuple{D,Integer}
@@ -7,9 +11,15 @@ end
 
 order(p::BernsteinPolynomial) = p.degree
 
-□(D) = HyperRectangle(svector(i->0., D), svector(i->1., D))
+"""
+    reference_cube(::Val{D})
 
-BernsteinPolynomial(c::Array{<:Real,D}) where{D} = BernsteinPolynomial(c, size(c).-1, □(D))
+Return the `[0,1]ᴰ` reference domain as a `HyperRectangle{D,Float64}`.
+"""
+reference_cube(::Val{D}) where {D} = HyperRectangle(svector(i->0., D), svector(i->1., D))
+reference_cube(D) = HyperRectangle(svector(i->0., D), svector(i->1., D))
+
+BernsteinPolynomial(c::Array{<:Real,D}) where {D} = BernsteinPolynomial(c, size(c).-1, reference_cube(Val(D)))
 
 function lower_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
     @assert 1 ≤ d ≤ D
@@ -25,12 +35,8 @@ function upper_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
     end
 end
 
-function (p::BernsteinPolynomial{D,T})(d::Integer, x::Real) where{D,T}
-    @assert 1 ≤ d ≤ D
-    partial_application(p,d,x)
-end
-
 function partial_application(p::BernsteinPolynomial{D,T},d::Integer, x::Real) where{D,T}
+    @assert 1 ≤ d ≤ D
     l = low_corner(p.domain)[d]; r = high_corner(p.domain)[d]
     x = (x - l) / (r - l)
     sz = size(p.coeffs)
@@ -45,18 +51,16 @@ function partial_application(p::BernsteinPolynomial{D,T},d::Integer, x::Real) wh
     BernsteinPolynomial(out, ntuple(i->i<d ? p.degree[i] : p.degree[i+1], D-1), section(p.domain, d))
 end
 
-(p::BernsteinPolynomial{1})(x::Real) = p(SVector(x))
-
 function (p::BernsteinPolynomial{D})(x::SVector{D}) where{D}
     l = low_corner(p.domain); r = high_corner(p.domain)
     x₀ = (x - l) ./ (r - l)
     evaluate(x₀, p.coeffs, Val{D}(), 1, length(p.coeffs))
 end
+(p::BernsteinPolynomial)(x) = p(SVector(x))
 
-(P::SVector{N,BernsteinPolynomial})(d::Integer, x::Real) where{N} = svector(i->P[i](d, x), N)
-(P::SVector{N,BernsteinPolynomial})(x::SVector) where{N} = svector(i->P[i](x), N)
+(P::SVector{N,<:BernsteinPolynomial})(x) where {N} = svector(i->P[i](SVector(x)), N)
 
-function ∇(p::BernsteinPolynomial{D}) where{D}
+function gradient(p::BernsteinPolynomial{D}) where{D}
     svector(D) do d
         n = size(p.coeffs)[d]
         k = p.degree[d]
@@ -94,7 +98,7 @@ function bound(p::BernsteinPolynomial)
     m, M
 end
 
-function Base.split(p::BernsteinPolynomial{D,T}, d::Integer, α=0.5) where{D,T}
+function Base.split(p::BernsteinPolynomial{D,T}, d::Integer, α=0.5) where {D,T}
     @assert 1 ≤ d ≤ D
     k = p.degree[d]
     k == 0 && return p, p
@@ -118,12 +122,11 @@ function Base.split(p::BernsteinPolynomial{D,T}, d::Integer, α=0.5) where{D,T}
     end
     split_point = low_corner(p.domain)[d] + (high_corner(p.domain)[d] - low_corner(p.domain)[d])*α
     rec1, rec2 = split(p.domain, d, split_point)
-    p1 = BernsteinPolynomial(selectdim(coeffs, d, 1:k+1)*1, p.degree, rec1)
-    p2 = BernsteinPolynomial(selectdim(coeffs, d, k+1:k+n)*1, p.degree, rec2)
+    p1 = BernsteinPolynomial(collect(selectdim(coeffs, d, 1:k+1)), p.degree, rec1)
+    p2 = BernsteinPolynomial(collect(selectdim(coeffs, d, k+1:k+n)), p.degree, rec2)
     p1, p2
 end
 
-##### Conversion #####
 function rebase(a::Vector{<:Real}, l::Real, r::Real)
     n = length(a)
     ã = copy(a)
@@ -146,7 +149,12 @@ function rebase(A::Array{<:Real,D}, rec::HyperRectangle{D}) where(D)
     Ã
 end
 
-function power2Berstein(a::Array{<:Real,D}, U::HyperRectangle{D}=□(D), k=size(a).-1) where{D}
+"""
+    power2bernstein
+
+TODO: document and write a `jldoctest`
+"""
+function power2bernstein(a::Array{<:Real,D}, U::HyperRectangle{D}=□(D), k=size(a).-1) where{D}
     b = zeros(k.+1)
     a = rebase(a, U)
     for i in CartesianIndices(a)
@@ -161,24 +169,11 @@ function power2Berstein(a::Array{<:Real,D}, U::HyperRectangle{D}=□(D), k=size(
     BernsteinPolynomial(b, k, U)
 end
 
-
-# idea taken from here https://personal.math.ubc.ca/~cass/graphics/text/www/pdf/a6.pdf
-@fastmath function bernstein_horner(t,y,n=length(y)-1)
-    s = 1-t
-    P = y[1]
-    C = n*t
-    for k in 1:n
-        @inbounds P = P*s + C*y[k+1]
-        C = C*(n-k)/(k+1)*t
-        k = k+1
-    end
-    return P
-end
-
 # Adapted from FastChebInterp
 @fastmath function evaluate(x::SVector{N}, c::AbstractArray, ::Val{dim}, i1, len) where {N,dim}
     n = size(c,dim)
     @inbounds xd = x[dim]
+    # idea taken from here https://personal.math.ubc.ca/~cass/graphics/text/www/pdf/a6.pdf
     if dim == 1
         s = 1-xd
         @inbounds P = c[i1]

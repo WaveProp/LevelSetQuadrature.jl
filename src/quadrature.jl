@@ -1,17 +1,13 @@
-function StaticArrays.insert(x̂::SVector{<:Any,<:Linearization{N,T}},k,y::T) where {N,T}
-    rec = first(x̂) |> domain
-    ŷ = Linearization(y,zero(SVector{N,T}),zero(T),rec)
-    insert(x̂,k,ŷ)
-end
+"""
+    sgn(m,s,surface,side)
 
-function StaticArrays.insert(x::Real,k,y::Real)
-    insert(SVector(x),k,y)
-end
-
-# TODO: @dongchen explain this function?
-function sgn(m, s, S, σ)
-    if m * s * σ > 0 || S
-        if m * σ > 0
+Compute the sign of the upper and lower restrictions of a function `ψ` with sign
+`s`. The `side` variable is eithe `1` for the upper restriction, or `-1` for the
+lower restriction, and `m` is the sign of `∇ψ ⋅ eₖ`.
+"""
+function sgn(m, s, surface, side)
+    if m*s*side > 0 || surface
+        if m * side > 0
             return 1
         else
             return -1
@@ -22,13 +18,15 @@ function sgn(m, s, S, σ)
 end
 
 """
-    tensorquad(rec,x,w)
+    tensorquad(rec::HyperRectangle,x,w)
 
-Given a one-dimensional ...
+Given the one-dimensional quadrature nodes `x` and  weights `w` for integrating
+a function between `0` and `1`, return the `nodes` and `weights` of the
+corresponding tensor-product quadrature on `rec`.
 """
 function tensorquad(rec::HyperRectangle{D}, x1d, w1d) where {D}
     xl, xu = low_corner(rec), high_corner(rec)
-    μ = prod(xu-xl)
+    μ      = prod(xu-xl)
     nodes = map(Iterators.product(ntuple(i->x1d,D)...)) do x̂
         # map reference nodes to rec
         rec(SVector(x̂))
@@ -40,7 +38,8 @@ function tensorquad(rec::HyperRectangle{D}, x1d, w1d) where {D}
     nodes, weights
 end
 
-function dim1NodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, L, U, x1d, w1d, multi_zeros=true)
+# base case where we compute the one dimensional quadrature
+function dim1quad(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, L, U, x1d, w1d, multi_zeros=true)
     roots = [L, U]
     if multi_zeros
         for ψ in Ψ
@@ -57,11 +56,14 @@ function dim1NodesWeights(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, L, U
     for (l, r) in zip(roots[1:end-1], roots[2:end])
         val = [ψ((l + r) / 2.0) for ψ in Ψ]
         if all((val .* signs) .≥ 0)
-            x, w = copy(x1d), copy(w1d)
-            @. x = x * (r - l) + l
-            @. w = w * (r - l)
-            append!(nodes, x)
-            append!(weights, w)
+            # push then rescale the nodes
+            append!(nodes, x1d)
+            append!(weights, w1d)
+            is = length(nodes)-length(x1d)+1 # where the new nodes start
+            for i in is:length(nodes)
+                nodes[i]   = nodes[i] * (r - l) + l
+                weights[i] = weights[i] * (r - l)
+            end
         end
     end
     return nodes, weights
@@ -72,6 +74,11 @@ struct Parameters
     maxgradient::Float64
 end
 
+"""
+    quadgen(ϕ,∇ϕ,U,s;order=5,maxdepth=20,maxgradient=20)
+
+TODO: extensively document this function
+"""
 function quadgen(ϕ,∇ϕ,U,s;order=5,maxdepth=20,maxgradient=20)
     par     = Parameters(maxdepth,maxgradient)
     x1d,w1d = gausslegendre(order)
@@ -121,7 +128,7 @@ function _quadgen(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRe
 
     ##### Base case #####
     if D == 1
-        return dim1NodesWeights(Ψ, signs, low_corner(rec)[1], high_corner(rec)[1], x1d, w1d)
+        return dim1quad(Ψ, signs, low_corner(rec)[1], high_corner(rec)[1], x1d, w1d)
     end
     ######################
 
@@ -167,7 +174,7 @@ function _quadgen(Ψ::Vector{<:Function}, signs::Vector{<:Integer}, rec::HyperRe
             push!(weights, w * norm(∇ϕ) / abs(∇ϕ[k]))
         else
             Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
-            Y, Ω = dim1NodesWeights(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)
+            Y, Ω = dim1quad(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)
             for (y, ω) in zip(Y, Ω)
                 push!(nodes, insert(x, k, y))
                 push!(weights, w * ω)
@@ -208,7 +215,7 @@ function quadgen(ϕ::BernsteinPolynomial{D},s;order=5,maxdepth=20,maxgradient=20
     x1d .= (x1d .+ 1) ./ 2
     w1d .= w1d ./ 2
     #
-    ∇ϕ = ∇(ϕ)
+    ∇ϕ = gradient(ϕ)
     U  = ϕ.domain
     _quadgen([ϕ],[s<=0 ? -1 : 1], U, s==0, [∇ϕ], x1d, w1d, 0, par)
 end
@@ -258,7 +265,7 @@ function _quadgen(Ψ::Vector{BernsteinPolynomial{D,T}}, signs::Vector{<:Integer}
 
     ##### Base case #####
     if D == 1
-        nodes, weights = dim1NodesWeights([x->ψ(x) for ψ in Ψ], signs, low_corner(rec)[1], high_corner(rec)[1], x1d,w1d,true)
+        nodes, weights = dim1quad([x->ψ(x) for ψ in Ψ], signs, low_corner(rec)[1], high_corner(rec)[1], x1d,w1d,true)
         return nodes, weights
     end
     ######################
@@ -285,7 +292,7 @@ function _quadgen(Ψ::Vector{BernsteinPolynomial{D,T}}, signs::Vector{<:Integer}
             ψ1, ψ2 = split(ψ, split_ax)
             push!(Ψ1, ψ1); push!(Ψ2, ψ2)
         end
-        ∇Ψ1 = [∇(ψ1) for ψ1 in Ψ1]; ∇Ψ2 = [∇(ψ2) for ψ2 in Ψ2]
+        ∇Ψ1 = [gradient(ψ1) for ψ1 in Ψ1]; ∇Ψ2 = [gradient(ψ2) for ψ2 in Ψ2]
         X1, W1 = _quadgen(Ψ1, copy(signs), rec1, surf, ∇Ψ1, x1d, w1d, level+1, par)
         X2, W2 = _quadgen(Ψ2, copy(signs), rec2, surf, ∇Ψ2, x1d, w1d, level+1, par)
         return (append!(X1, X2), append!(W1, W2))
@@ -328,7 +335,7 @@ function _quadgen(Ψ::Vector{BernsteinPolynomial{D,T}}, signs::Vector{<:Integer}
             push!(weights, w * LinearAlgebra.norm(∇ϕ) / abs(∇ϕ[k]))
         else
             Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
-            Y, Ω = dim1NodesWeights(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)
+            Y, Ω = dim1quad(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)
             for (y, ω) in zip(Y, Ω)
                 push!(nodes, insert(x, k, y))
                 push!(weights, w * ω)
@@ -337,4 +344,15 @@ function _quadgen(Ψ::Vector{BernsteinPolynomial{D,T}}, signs::Vector{<:Integer}
     end
     ###########################################
     return nodes, weights
+end
+
+# utility functions
+function StaticArrays.insert(x̂::SVector{<:Any,<:Linearization{N,T}},k,y::T) where {N,T}
+    rec = first(x̂) |> domain
+    ŷ = Linearization(y,zero(SVector{N,T}),zero(T),rec)
+    insert(x̂,k,ŷ)
+end
+
+function StaticArrays.insert(x::Real,k,y::Real)
+    insert(SVector(x),k,y)
 end
