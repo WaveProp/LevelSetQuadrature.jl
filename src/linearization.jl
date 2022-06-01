@@ -1,16 +1,30 @@
 """
-    struct Linearization{D,T<:Real}
+    GradientDual{N,T}
+
+Structure used to reprensent the gradient of a function `f : ℝᴺ → T` for the
+purpose of performing forward-mode automatic differentiation.
+"""
+struct GradientDual{N,T}
+    α::T
+    β::SVector{N,T}
+end
+
+value(l::GradientDual)    = l.α
+gradient(l::GradientDual) = l.β
+
+"""
+    struct LinearizationDual{D,T<:Real}
 
 Linearization of a `D`-dimensional function `f : 𝐑ᴰ → T` with a strict bound on
 the remainder.
 
-`Linearization` objects are constructed given a function/functor `f` and a
-`HyperRectangle` `rec` using `l = Linearization(f,rec)`. The object `l`
+`LinearizationDual` objects are constructed given a function/functor `f` and a
+`HyperRectangle` `rec` using `l = LinearizationDual(f,rec)`. The object `l`
 represents an approximation of `f` inside of `rec` in the following sense:
-`|f(𝐱) - α - β⋅(𝐱 - 𝐱₀)| < ϵ ∀ 𝐱 ∈ rec`, where `l = Linearization(f,rec)` and `α =
-value(l)`, `β = gradient(l)`, `ϵ = remainder(l)`
+`|f(𝐱) - α - β⋅(𝐱 - 𝐱₀)| < ϵ ∀ 𝐱 ∈ rec`, where `l = LinearizationDual(f,rec)` and `α =
+value(l)`, `β = gradient(l)`, `ϵ = remainder(l)`.
 """
-struct Linearization{D,T<:Real}
+struct LinearizationDual{D,T}
     α::T
     β::SVector{D,T}
     ϵ::T
@@ -22,94 +36,120 @@ end
 
 Value of `l` at the center of the `domain(l)`.
 """
-value(l::Linearization) = l.α
+value(l::LinearizationDual) = l.α
 
 """
-    value(l::Linearization)
+    gradient(l::Linearization)
 
 Gradient of `l` at the center of the `domain(l)`.
 """
-gradient(l::Linearization) = l.β
+gradient(l::LinearizationDual) = l.β
 
 """
     remainder(l::Linearization)
 
 An upper bound for the remainder of `l`.
 """
-remainder(l::Linearization) = l.ϵ
+remainder(l::LinearizationDual) = l.ϵ
 
 """
     domain(l::Linearization) --> HyperRectangle
 
 Domain of validity of the linearization `l`.
 """
-domain(l::Linearization) = l.rec
-
-half_width(l::Linearization) = half_width(domain(l))
-
-function bound(l::Linearization)
-    α = value(l)
-    δ = half_width(l)
-    β = gradient(l)
-    Δ = dot(abs.(β), δ) + remainder(l)
-    α - Δ, α + Δ
-end
-
-bound(l::SVector{<:Any,<:Linearization}) = bound.(l) # for gradients
-
+domain(l::LinearizationDual) = l.rec
 
 ## addition
-Base.:+(u::Linearization, c::Real) = Linearization(value(u) + c, gradient(u), remainder(u), domain(u))
-
-Base.:+(c::Real, u::Linearization) = u + c
-
-function Base.:+(u::Linearization, v::Linearization)
-    @assert domain(u) == domain(v) "domains must be identical"
-    Linearization(value(u) + value(v), gradient(u) + gradient(v), u.ϵ + v.ϵ, domain(u))
+Base.:+(u::GradientDual, c::Real) = GradientDual(value(u) + c, gradient(u))
+Base.:+(c::Real, u::GradientDual) = u + c
+Base.:+(u::LinearizationDual, c::Real) = LinearizationDual(value(u) + c, gradient(u), remainder(u), domain(u))
+Base.:+(c::Real, u::LinearizationDual) = u + c
+function Base.:+(u::LinearizationDual{N,T}, v::LinearizationDual{N,T}) where {N,T}
+    rec = _result_domain(u,v)
+    LinearizationDual(value(u) + value(v), gradient(u) + gradient(v), u.ϵ + v.ϵ, rec)
+end
+function Base.:+(u::GradientDual, v::GradientDual)
+    GradientDual(value(u) + value(v), gradient(u) + gradient(v))
 end
 
 ## subtraction
-
-Base.:-(u::Linearization) = (-1) * u
-
-Base.:-(u::Linearization, c::Real) = u + (-c)
-
-Base.:-(c::Real, u::Linearization) = c + (-u)
-
-Base.:-(u::Linearization, v::Linearization) = u + (-v)
+Base.:-(u::LinearizationDual) = (-1) * u
+Base.:-(u::GradientDual) = (-1) * u
+Base.:-(u::LinearizationDual, c::Real) = u + (-c)
+Base.:-(u::GradientDual, c::Real) = u + (-c)
+Base.:-(c::Real, u::LinearizationDual) = c + (-u)
+Base.:-(c::Real, u::GradientDual) = c + (-u)
+Base.:-(u::LinearizationDual, v::LinearizationDual) = u + (-v)
+Base.:-(u::GradientDual, v::GradientDual) = u + (-v)
 
 ## multiplication
-Base.:*(u::Linearization, c::Real) = Linearization(value(u) * c, gradient(u) * c, abs(c) * remainder(u), domain(u))
-
-Base.:*(c::Real, u::Linearization) = u * c
-
-function Base.:*(u::Linearization, v::Linearization)
-    @assert domain(u) == domain(v)
+Base.:*(u::LinearizationDual, c::Real) = LinearizationDual(value(u) * c, gradient(u) * c, abs(c) * remainder(u), domain(u))
+Base.:*(u::GradientDual, c::Real) = GradientDual(value(u) * c, gradient(u) * c)
+Base.:*(c::Real, u::LinearizationDual) = u * c
+Base.:*(c::Real, u::GradientDual) = u * c
+function Base.:*(u::LinearizationDual, v::LinearizationDual)
+    rec = _result_domain(u,v)
     δ = half_width(u)
     l1 = dot(abs.(gradient(u)), δ)
     l2 = dot(abs.(gradient(v)), δ)
-    Linearization(value(u) * value(v), value(u) * gradient(v) + value(v) * gradient(u), l1 * l2 + (abs(value(u)) + l1) * remainder(v) + (abs(value(v)) + l2) * remainder(u) + remainder(u) * remainder(v), domain(u))
+    LinearizationDual(value(u) * value(v), value(u) * gradient(v) + value(v) * gradient(u), l1 * l2 + (abs(value(u)) + l1) * remainder(v) + (abs(value(v)) + l2) * remainder(u) + remainder(u) * remainder(v), rec)
 end
 
-## division
-Base.:/(u::Linearization, c::Real) = Linearization(value(u) / c, gradient(u) / c, remainder(u) / abs(c), domain(u))
+# since `LinearizationDual` behaves like a number, multiplying a `LinearizationDual` by
+# a vector of the same type is handled like scalar*vector
+function Base.:*(α::LinearizationDual{N, T}, β::SVector{M, LinearizationDual{N, T}}) where {N,M,T}
+    map(b -> α*b,β)
+end
 
-# TODO: explain this function
-function dual_variables(rec::HyperRectangle{D,T}) where {D,T}
+function Base.:*(u::GradientDual, v::GradientDual)
+    GradientDual(value(u) * value(v), value(u) * gradient(v) + value(v) * gradient(u))
+end
+
+# division
+Base.:/(u::LinearizationDual, c::Real) = LinearizationDual(value(u) / c, gradient(u) / c, remainder(u) / abs(c), domain(u))
+Base.:/(u::GradientDual, c::Real) = GradientDual(value(u) / c, gradient(u) / c)
+
+# dual basis
+function linearization_basis(rec::HyperRectangle{D,T}) where {D,T}
     xc = center(rec)
     x̂ = svector(D) do dim
         β = svector(i -> i == dim ? one(T) : zero(T), D)
-        Linearization(xc[dim], β, zero(T), rec)
+        LinearizationDual(xc[dim], β, zero(T), rec)
     end
     return x̂
 end
 
+function gradient_basis(x::SVector{D,T}) where {D,T}
+    x̂ = svector(D) do dim
+        β = svector(i -> i == dim ? one(T) : zero(T), D)
+        GradientDual(x[dim], β)
+    end
+    return x̂
+end
+
+# TODO: document
 function linearization(f, rec::HyperRectangle)
-    x̂ = dual_variables(rec)
+    x̂ = linearization_basis(rec)
     f(x̂)
 end
 
-function Base.:^(l::Linearization, p::Integer)
+# TODO: document
+function gradient(f, x::SVector)
+    x̂ = gradient_basis(x)
+    gradient(f(x̂))
+end
+
+# power
+function Base.:^(l::LinearizationDual, p::Integer)
+    @assert p ≥ 1
+    if p == 1
+        return l
+    else
+        l * (l^(p - 1))
+    end
+end
+
+function Base.:^(l::GradientDual, p::Integer)
     @assert p ≥ 1
     if p == 1
         return l
@@ -134,11 +174,64 @@ function bound(f::Function, rec::HyperRectangle{D}) where {D}
 end
 
 #
-function approximate_bound(f::Function, rec::HyperRectangle{D}, n=100) where {D}
+function approximate_bound(f::Function, rec::HyperRectangle{D}, n=10) where {D}
     sz = ntuple(i -> n, D)
     msh = UniformCartesianMesh(rec, sz)
     iter = NodeIterator(msh)
     fmin, fmax = extrema(f, iter)
-    fc = f(center(rec))
-    return max(fmax - fc, fc - fmin)
+    return fmin,fmax
+end
+
+# HACK: automatic definition of gradient as required by this package (i.e. as an SVector
+# of functions). Maybe not the most efficient one, but does not seem to affect
+# the performance in any significant way. A better way could be to get the
+# partial independently
+function gradient(ϕ::Function,::Val{D}) where {D}
+    f = (x) -> gradient(ϕ,x)
+    svector(i-> x -> f(x)[i],D)
+end
+
+half_width(l::LinearizationDual) = half_width(domain(l))
+
+function bound(l::LinearizationDual)
+    α = value(l)
+    δ = half_width(l)
+    β = gradient(l)
+    Δ = dot(abs.(β), δ) + remainder(l)
+    α - Δ, α + Δ
+end
+
+bound(l::SVector{<:Any,<:LinearizationDual}) = bound.(l) # for gradients
+
+
+# required by `gradient_basis` to autodiff through `LinearizationDual`
+function Base.one(::Type{LinearizationDual{N, T}}) where {N,T}
+    α = one(T)
+    β = svector(i->zero(T),N)
+    ϵ = zero(T)
+    rec = HyperRectangle(β,β)
+    LinearizationDual(α,β,ϵ,rec)
+end
+function Base.zero(::Type{LinearizationDual{N, T}}) where {N,T}
+    α = zero(T)
+    β = svector(i->zero(T),N)
+    ϵ = zero(T)
+    rec = HyperRectangle(β,β)
+    LinearizationDual(α,β,ϵ,rec)
+end
+
+# domain of operation between two linearizations
+function _result_domain(u::LinearizationDual{N,T},v::LinearizationDual{N,T}) where {N,T}
+    # HACK: the zero rec is used when building one(::Type{LinearizationDual})
+    # and zero(::Type{LinearizationDual}), so we must check those before
+    # asserting equality
+    rec = HyperRectangle(svector(i->zero(T),N),svector(i->zero(T),N))
+    if domain(u) == rec
+        return domain(v)
+    elseif domain(v) == rec
+        return domain(u)
+    else
+        @assert domain(u) == domain(v) "domains must be identical"
+        return domain(u)
+    end
 end

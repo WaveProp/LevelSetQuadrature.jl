@@ -60,12 +60,26 @@ end
 
 TODO: extensively document this function
 """
-function quadgen(ϕ,∇ϕ,U,s;kwargs...)
-    Ω    = ImplicitDomain([ϕ],[∇ϕ],[s],U)
+function quadgen(ϕ::Function,U::HyperRectangle{N},s,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
+    if s == :interior
+        signs = [-1]
+    elseif s == :exterior
+        signs = [1]
+    elseif s == :surface
+        signs = [0]
+    else
+        error("unrecognized argument $s. Options are `:exterior`, `:interior`, and `:surface`")
+    end
+    Ω = ImplicitDomain([ϕ],[∇ϕ],signs,U)
     quadgen(Ω;kwargs...)
 end
 
-function quadgen(Ω::ImplicitDomain;order=5,maxdepth=20,maxslope=10)
+function quadgen(ϕ::BernsteinPolynomial,s;kwargs...)
+    Ω  = BernsteinDomain([ϕ],[s])
+    quadgen(Ω;kwargs...)
+end
+
+function quadgen(Ω::AbstractDomain;order=5,maxdepth=20,maxslope=10)
     par     = Parameters(maxdepth,maxslope)
     x1d,w1d = gausslegendre(order)
     # normalize quadrature from [-1,1] to [0,1] interval
@@ -75,7 +89,7 @@ function quadgen(Ω::ImplicitDomain;order=5,maxdepth=20,maxslope=10)
     _quadgen(Ω,surf,x1d,w1d,0,par)
 end
 
-function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters) where {N,T}
+function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters) where {N,T}
     rec = Ω.rec
     xc  = center(rec)
     Ψ   = Ω.Ψ
@@ -121,9 +135,7 @@ function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters)
         end
     end
     if !any(isvalid) # no valid direction so split
-        rec1, rec2 = split(rec)
-        Ω1 = ImplicitDomain(copy(Ψ),copy(∇Ψ),copy(signs),rec1)
-        Ω2 = ImplicitDomain(Ψ,copy(∇Ψ),copy(signs),rec2)
+        Ω1,Ω2 = split(Ω)
         X1, W1 = _quadgen(Ω1, surf, x1d, w1d, level+1, par)
         X2, W2 = _quadgen(Ω2, surf, x1d, w1d, level+1, par)
         return (append!(X1, X2), append!(W1, W2))
@@ -145,14 +157,13 @@ function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters)
             -Inf
         end
     end
-    Ω̃  = restrict(Ω,k,surf) # the D-1 dimensional ImplicitDomain
+    Ω̃  = restrict(Ω,k,surf) # the D-1 dimensional domain
     X, W = _quadgen(Ω̃, false, x1d, w1d, level, par)
     nodes = Vector{SVector{D,T}}()
     weights = Vector{T}()
     for (x, w) in zip(X, W)
         if surf
-            # FIXME: if we get here, are we guaranteed to have only one Ψ? If
-            # so, that should probably be checked...
+            # if we get here there should be only one Ψ
             @assert length(Ψ) == 1
             ψ = first(Ψ)
             ∇ψ = first(∇Ψ)
@@ -172,22 +183,6 @@ function _quadgen(Ω::ImplicitDomain{N,T},surf,x1d, w1d, level, par::Parameters)
     end
     ###########################################
     return nodes, weights
-end
-
-function quadgen(ϕ::BernsteinPolynomial{D},s;order=4,maxdepth=20,maxslope=20) where {D}
-    # rec = domain(ϕ)
-    ∇ϕ  = gradient(ϕ)
-    # Ω  = ImplicitDomain([ϕ],[∇ϕ],[s],rec)
-    # quadgen(Ω;kwargs...)
-    par     = Parameters(maxdepth,maxslope)
-    x1d,w1d = gausslegendre(order)
-    # normalize quadrature from [-1,1] to [0,1] interval
-    x1d .= (x1d .+ 1) ./ 2
-    w1d .= w1d ./ 2
-    #
-
-    U  = ϕ.domain
-    _quadgen([ϕ],[s<=0 ? -1 : 1], U, s==0, [∇ϕ], x1d, w1d, 0, par)
 end
 
 function _quadgen(Ψ::Vector{BernsteinPolynomial{D,T}}, signs::Vector{<:Integer}, rec, surf, ∇Ψ, x1d, w1d, level, par::Parameters) where{D,T}
@@ -317,9 +312,9 @@ function _quadgen(Ψ::Vector{BernsteinPolynomial{D,T}}, signs::Vector{<:Integer}
 end
 
 # utility functions
-function StaticArrays.insert(x̂::SVector{<:Any,<:Linearization{N,T}},k,y::T) where {N,T}
+function StaticArrays.insert(x̂::SVector{<:Any,<:LinearizationDual{N,T}},k,y::T) where {N,T}
     rec = first(x̂) |> domain
-    ŷ = Linearization(y,zero(SVector{N,T}),zero(T),rec)
+    ŷ = LinearizationDual(y,zero(SVector{N,T}),zero(T),rec)
     insert(x̂,k,ŷ)
 end
 

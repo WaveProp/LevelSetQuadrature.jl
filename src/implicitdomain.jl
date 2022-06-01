@@ -1,8 +1,12 @@
 @enum CellType empty_cell whole_cell cut_cell
 
-struct ImplicitDomain{N,T}
-    Ψ::Vector{<:Function}
-    ∇Ψ::Vector{SVector{N,<:Function}}
+abstract type AbstractDomain{N,T} end
+
+cell_type(Ω::AbstractDomain) = Ω.celltype
+
+struct ImplicitDomain{N,T} <: AbstractDomain{N,T}
+    Ψ::Vector{Function}
+    ∇Ψ::Vector{SVector{N,Function}}
     signs::Vector{Int}
     rec::HyperRectangle{N,T}
     celltype::CellType
@@ -12,14 +16,24 @@ struct ImplicitDomain{N,T}
     end
 end
 
-cell_type(Ω::ImplicitDomain) = Ω.celltype
+function Base.split(Ω::ImplicitDomain)
+    Ψ  = Ω.Ψ
+    ∇Ψ = Ω.∇Ψ
+    signs = Ω.signs
+    rec = Ω.rec
+    k   = argmax(width(rec))
+    rec1, rec2 = split(rec,k)
+    Ω1 = ImplicitDomain(copy(Ψ),copy(∇Ψ),copy(signs),rec1)
+    Ω2 = ImplicitDomain(Ψ,copy(∇Ψ),copy(signs),rec2)
+    return Ω1,Ω2
+end
 
 """
     prune!(Ω)
 
 Prune the functions specifying the domain `Ω` and return the `CellType` of the domain.
 """
-function prune!(Ω::ImplicitDomain)
+function prune!(Ω::AbstractDomain)
     _prune!(Ω.Ψ, Ω.∇Ψ, Ω.rec, Ω.signs)
 end
 
@@ -63,8 +77,8 @@ function restrict(Ω::ImplicitDomain{N,T}, k, surf) where {N,T}
     signs = Ω.signs
     rec = Ω.rec
     xc = center(rec)
-    Ψ̃  = Function[]
-    ∇Ψ̃ = SVector{N-1,Function}[]
+    Ψ̃  = empty(Ψ)
+    ∇Ψ̃ = SVector{N-1,Function}[] # one dimensional lower, so one less derivative in grad
     new_signs = empty(signs)
     for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
         # why bound? dont we know that ∇Ψ[k] has a fixed sign on direction k?
@@ -83,7 +97,6 @@ function restrict(Ω::ImplicitDomain{N,T}, k, surf) where {N,T}
     Ω̃ = ImplicitDomain(Ψ̃, ∇Ψ̃, new_signs, section(rec, k))
     return Ω̃
 end
-
 
 function lower_restrict(ψ::Function,rec,k)
     a = low_corner(rec)[k]
@@ -106,4 +119,64 @@ function upper_restrict_grad(∇ψ::SVector{N}, rec, k) where {N}
     a   = high_corner(rec)[k]
     ∇ψ′ = deleteat(∇ψ,k)
     svector(d -> (x) -> ∇ψ′[d](insert(x, k, a)), N-1)
+end
+
+struct BernsteinDomain{N,T} <: AbstractDomain{N,T}
+    Ψ::Vector{BernsteinPolynomial{N,T}}
+    ∇Ψ::Vector{SVector{N,BernsteinPolynomial{N,T}}}
+    signs::Vector{Int}
+    rec::HyperRectangle{N,T}
+    celltype::CellType
+    function BernsteinDomain(Ψ::Vector{BernsteinPolynomial{N,T}},signs) where {N,T}
+        @assert length(signs) == length(Ψ)
+        rec = domain(first(Ψ))
+        @assert all(ψ -> domain(ψ) == rec,Ψ)
+        ∇Ψ = map(gradient,Ψ)
+        ctype = _prune!(Ψ, ∇Ψ, rec, signs)
+        new{N,T}(Ψ, ∇Ψ, signs, rec::HyperRectangle{N,T}, ctype)
+    end
+end
+BernsteinDomain(ψ::BernsteinPolynomial,s::Integer;kwargs...) = BernsteinDomain([ψ],[s];kwargs...)
+
+function Base.split(Ω::BernsteinDomain)
+    Ψ  = Ω.Ψ
+    ∇Ψ = Ω.∇Ψ
+    signs = Ω.signs
+    rec = Ω.rec
+    # split into left and right domains
+    k   = argmax(width(rec))
+    Ψl  = empty(Ψ)
+    Ψr  = empty(Ψ)
+    for ψ in Ψ
+        ψl,ψr = split(ψ,k)
+        push!(Ψl,ψl)
+        push!(Ψr,ψr)
+    end
+    Ω1 = BernsteinDomain(Ψl,copy(signs))
+    Ω2 = BernsteinDomain(Ψr,copy(signs))
+    return Ω1,Ω2
+end
+
+function restrict(Ω::BernsteinDomain{N,T}, k, surf) where {N,T}
+    Ψ  = Ω.Ψ
+    ∇Ψ = Ω.∇Ψ
+    signs = Ω.signs
+    rec = Ω.rec
+    xc = center(rec)
+    Ψ̃  = BernsteinPolynomial{N-1,T}[]
+    ∇Ψ̃ = SVector{N-1,BernsteinPolynomial{N-1,T}}[] # one dimensional lower, so one less derivative in grad
+    new_signs = empty(signs)
+    for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
+        # why bound? dont we know that ∇Ψ[k] has a fixed sign on direction k?
+        # pos_neg = bound(∇ψ[k],rec)[1] > 0 ? 1 : -1
+        pos_neg = ∇ψ[k](xc) > 0 ? 1 : -1 # use sign?
+        ψL  = lower_restrict(ψ, k)
+        sL  = sgn(pos_neg, s, surf, -1)
+        ψU  = upper_restrict(ψ, k)
+        sU = sgn(pos_neg, s, surf, 1)
+        append!(Ψ̃, (ψL, ψU))
+        append!(new_signs, (sL, sU))
+    end
+    Ω̃ = BernsteinDomain(Ψ̃, new_signs)
+    return Ω̃
 end

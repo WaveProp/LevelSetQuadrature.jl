@@ -18,11 +18,13 @@ import WavePropBase:
     NodeIterator,
     svector,
     order,
-    ambient_dimension
+    ambient_dimension,
+    split,
+    PlotPoints
 
 include("linearization.jl")
-include("implicitdomain.jl")
 include("bernsteinpolynomials.jl")
+include("implicitdomain.jl")
 include("quadrature.jl")
 
 export
@@ -30,6 +32,9 @@ export
     quadgen,
     # integrate,
     BernsteinPolynomial,
-    power2bernstein
+    power2bernstein,
+    # re-export
+    WavePropBase,
+    PlotPoints
 
 end # module
