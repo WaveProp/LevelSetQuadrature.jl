@@ -1,10 +1,12 @@
+abstract type AbstractDual{N,T} end
+
 """
     GradientDual{N,T}
 
 Structure used to reprensent the gradient of a function `f : ℝᴺ → T` for the
 purpose of performing forward-mode automatic differentiation.
 """
-struct GradientDual{N,T}
+struct GradientDual{N,T} <: AbstractDual{N,T}
     α::T
     β::SVector{N,T}
 end
@@ -24,7 +26,7 @@ represents an approximation of `f` inside of `rec` in the following sense:
 `|f(𝐱) - α - β⋅(𝐱 - 𝐱₀)| < ϵ ∀ 𝐱 ∈ rec`, where `l = LinearizationDual(f,rec)` and `α =
 value(l)`, `β = gradient(l)`, `ϵ = remainder(l)`.
 """
-struct LinearizationDual{D,T}
+struct LinearizationDual{D,T} <: AbstractDual{D,T}
     α::T
     β::SVector{D,T}
     ϵ::T
@@ -158,6 +160,8 @@ function Base.:^(l::GradientDual, p::Integer)
     end
 end
 
+# TODO: add cos/sin
+
 """
     bound(f,rec::HyperRectangle)
 
@@ -202,7 +206,6 @@ function bound(l::LinearizationDual)
 end
 
 bound(l::SVector{<:Any,<:LinearizationDual}) = bound.(l) # for gradients
-
 
 # required by `gradient_basis` to autodiff through `LinearizationDual`
 function Base.one(::Type{LinearizationDual{N, T}}) where {N,T}

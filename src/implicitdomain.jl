@@ -4,6 +4,11 @@ abstract type AbstractDomain{N,T} end
 
 cell_type(Ω::AbstractDomain) = Ω.celltype
 
+"""
+    ImplicitDomain{N,T} <: AbstractDomain{N,T}
+
+Domain defined by
+"""
 struct ImplicitDomain{N,T} <: AbstractDomain{N,T}
     Ψ::Vector{Function}
     ∇Ψ::Vector{SVector{N,Function}}
@@ -12,6 +17,7 @@ struct ImplicitDomain{N,T} <: AbstractDomain{N,T}
     celltype::CellType
     function ImplicitDomain(Ψ, ∇Ψ, signs, rec::HyperRectangle{N,T}) where {N,T}
         ctype = _prune!(Ψ, ∇Ψ, rec, signs)
+        ctype == empty_cell && map(empty!,(Ψ,∇Ψ,signs))
         new{N,T}(Ψ, ∇Ψ, signs, rec::HyperRectangle{N,T}, ctype)
     end
 end

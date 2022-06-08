@@ -131,7 +131,7 @@ function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters)
     isvalid = ntuple(D) do dim
         all(bnds) do bnd
             (prod(bnd[dim])≥0) &&
-            (1/minimum(abs,bnd[dim]) < par.maxslope)
+            (1/minimum(abs,bnd[dim]) < par.maxslope) # FIXME: what criteria should be used here?
         end
     end
     if !any(isvalid) # no valid direction so split
@@ -152,7 +152,7 @@ function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters)
     end
     k = argmax(1:D) do dim
         if isvalid[dim]
-            minimum(∇ψc -> ∇ψc[dim],∇Ψc)
+            minimum(∇ψc -> abs(∇ψc[dim]),∇Ψc)
         else
             -Inf
         end
@@ -172,132 +172,6 @@ function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters)
             ∇ϕ = map(f->f(x̃),∇ψ)
             push!(nodes, x̃)
             push!(weights, w * norm(∇ϕ) / abs(∇ϕ[k]))
-        else
-            Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
-            Y, Ω = dim1quad(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)
-            for (y, ω) in zip(Y, Ω)
-                push!(nodes, insert(x, k, y))
-                push!(weights, w * ω)
-            end
-        end
-    end
-    ###########################################
-    return nodes, weights
-end
-
-function _quadgen(Ψ::Vector{BernsteinPolynomial{D,T}}, signs::Vector{<:Integer}, rec, surf, ∇Ψ, x1d, w1d, level, par::Parameters) where{D,T}
-    @assert !surf || (D > 1)
-    @assert rec == Ψ[1].domain
-    if level ≥  par.maxdepth
-        @warn "Maximum depth reached: resorting to low-order quadrature" maxlog=1
-        if surf
-            return [center(rec)], prod(i->high_corner(rec)[i] - low_corner(rec)[i], D-1)
-        else
-            return [center(rec)], prod(high_corner(rec).-low_corner(rec))
-        end
-    end
-    ##### Pruning #####
-    delInd = Vector{Int}()
-    n = length(Ψ)
-    for (i, ψ) in enumerate(Ψ)
-        m, M = bound(ψ)
-        if m ≥ 0
-            if signs[i] ≥ 0
-                append!(delInd, i)
-                n -= 1
-            else
-                return Vector{SVector{D,Float64}}(), Vector{Float64}()
-            end
-        elseif M ≤ 0
-            if signs[i] ≤ 0
-                append!(delInd, i)
-                n -= 1
-            else
-                return Vector{SVector{D,Float64}}(), Vector{Float64}()
-            end
-        end
-    end
-    deleteat!(signs, delInd)
-    if n == 0
-        if surf
-            return Vector{SVector{D,Float64}}(), Vector{Float64}()
-        else
-            return tensorquad(rec, x1d, w1d)
-        end
-    end
-    deleteat!(Ψ, delInd)
-    ###################
-
-    ##### Base case #####
-    if D == 1
-        nodes, weights = dim1quad([x->ψ(x) for ψ in Ψ], signs, low_corner(rec)[1], high_corner(rec)[1], x1d,w1d,true)
-        return nodes, weights
-    end
-    ######################
-
-    ##### Determine direction #####
-    K = Vector{Integer}()
-    for j in 1:D
-        non_zero = true
-        for ∇ψ in ∇Ψ
-            m, M = bound(∇ψ[j])
-            if m * M ≤ 0
-                non_zero = false
-                break
-            end
-        end
-        non_zero && push!(K, j)
-    end
-    if length(K) == 0
-        split_ax = argmax(high_corner(rec) - low_corner(rec))
-        rec1, rec2 = split(rec,split_ax)
-        Ψ1 = empty(Ψ)
-        Ψ2 = empty(Ψ)
-        for ψ in Ψ
-            ψ1, ψ2 = split(ψ, split_ax)
-            push!(Ψ1, ψ1); push!(Ψ2, ψ2)
-        end
-        ∇Ψ1 = [gradient(ψ1) for ψ1 in Ψ1]; ∇Ψ2 = [gradient(ψ2) for ψ2 in Ψ2]
-        X1, W1 = _quadgen(Ψ1, copy(signs), rec1, surf, ∇Ψ1, x1d, w1d, level+1, par)
-        X2, W2 = _quadgen(Ψ2, copy(signs), rec2, surf, ∇Ψ2, x1d, w1d, level+1, par)
-        return (append!(X1, X2), append!(W1, W2))
-    elseif length(K) == 1
-        k = K[1]
-    else
-        c = svector(i->0.5, D); Grad = [[abs(∇ψ[j](c)) for j in 1:D] for ∇ψ in ∇Ψ]
-        k = K[1]; s = sum(grad->grad[k]/sum(grad), Grad)
-        for k̃ in K[2:end]
-            s̃ = sum(grad->grad[k̃]/sum(grad), Grad)
-            if s̃ > s
-                k = k̃; s = s̃
-            end
-        end
-    end
-    Ψ̃ = Vector{BernsteinPolynomial{D-1,T}}()
-    new_signs = Vector{Integer}()
-    ∇Ψ̃ = Vector{SVector{D-1,BernsteinPolynomial{D-1,T}}}()
-    for (ψ, s, ∇ψ) in zip(Ψ, signs, ∇Ψ)
-        pos_neg = bound(∇ψ[k])[1] > 0 ? 1 : -1
-        ψL = lower_restrict(ψ, k); sL = sgn(pos_neg, s, surf, -1); ∇ψL = svector(j->j<k ? lower_restrict(∇ψ[j], k) : lower_restrict(∇ψ[j+1], k), D-1)
-        ψU = upper_restrict(ψ, k); sU = sgn(pos_neg, s, surf, 1);  ∇ψU = svector(j->j<k ? upper_restrict(∇ψ[j], k) : upper_restrict(∇ψ[j+1], k), D-1)
-        append!(Ψ̃, [ψL, ψU])
-        append!(new_signs, [sL, sU])
-        append!(∇Ψ̃, [∇ψL, ∇ψU])
-        # append!(∇Ψ̃, [∇(ψL), ∇(ψU)])
-    end
-    ###############################
-
-    ##### Recursion in one less dimension #####
-    X, W = _quadgen(Ψ̃, new_signs, section(rec, k), false, ∇Ψ̃, x1d, w1d, level, par)
-    nodes = Vector{SVector{D,Float64}}()
-    weights = Vector{Float64}()
-    for (x, w) in zip(X, W)
-        if surf
-            y = find_zero(y -> Ψ[1](insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
-            x̃ = insert(x, k, y)
-            ∇ϕ = [∇Ψ[1][j](x̃) for j = 1:D]
-            push!(nodes, x̃)
-            push!(weights, w * LinearAlgebra.norm(∇ϕ) / abs(∇ϕ[k]))
         else
             Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
             Y, Ω = dim1quad(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)

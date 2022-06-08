@@ -3,7 +3,7 @@
 
 TODO: docstring
 """
-struct BernsteinPolynomial{D,T}
+struct BernsteinPolynomial{D,T} <: Function
     coeffs::Array{T,D}
     degree::NTuple{D,Integer}
     domain::HyperRectangle{D,T}
@@ -77,7 +77,7 @@ function gradient(p::BernsteinPolynomial{D}) where{D}
     end
 end
 
-function Base.show(io::IO, p::BernsteinPolynomial)
+function Base.show(io::IO, ::MIME"text/plain", p::BernsteinPolynomial)
     lb = low_corner(p.domain)
     ub = high_corner(p.domain)
     print(io, "Bernestein polynomial of order ", order(p), " on ",
@@ -87,8 +87,8 @@ function Base.show(io::IO, p::BernsteinPolynomial)
     end
 end
 
-function bound(p::BernsteinPolynomial, rec=domain(p))
-    @assert domain(p) == rec # maybe it makes sense to rescale p if domain(p) is not rec?
+function bound(p::BernsteinPolynomial, rec::HyperRectangle=domain(p))
+    # @assert domain(p) == rec # maybe it makes sense to rescale p if domain(p) is not rec?
     M = maximum(p.coeffs)
     m = minimum(p.coeffs)
     if M < 0 && prod(size(p.coeffs)) < prod(p.degree.+1)

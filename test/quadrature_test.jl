@@ -5,7 +5,7 @@ using SpecialFunctions
 
 using LevelSetQuadrature: svector
 
-@testset "Hypersphere area/volume" begin
+@testset "Hypersphere" begin
     sphere_volume(r,n) = π^(n/2)/gamma(n/2+1)*r^n
     sphere_area(r,n)   = 2*π^(n/2)/gamma(n/2)*r^(n-1)
     r = 1.5
@@ -18,15 +18,14 @@ using LevelSetQuadrature: svector
             # the moment
             U = HyperRectangle(1.1*svector(i->-r,n),1.1*svector(i->r,n))
             ϕ  = (x) -> sum(x .* x) - r^2
-            ∇ϕ = svector(i-> (x) -> 2*x[i],n)
             # volume test
             @testset "volume" begin
-                X, W = quadgen(ϕ, ∇ϕ, U, -1;order=p)
+                X, W = quadgen(ϕ, U,:interior;order=p)
                 @test isapprox(sum(W),sphere_volume(r,n);atol)
             end
             @testset "surface" begin
                 # area test
-                X, W = quadgen(ϕ, ∇ϕ, U,0;order=p)
+                X, W = quadgen(ϕ, U,:surface;order=p)
                 @test isapprox(sum(W),sphere_area(r,n);atol)
             end
         end
