@@ -118,12 +118,12 @@ provide further control on the generated quadrature; you should consult the
     In order to build a high-order quadrature, the algorithm implemented in this
     package must build rigorous bounds on the implicit function passed and its
     derivatives. For that purpose, we use the bounded linearization idea of
-    Saye, implemented in the [`Linearization`](@ref) type, which performs an
+    Saye, implemented in the [`LinearizationDual`](@ref) type, which performs an
     operation akin to automatic differentiation in order to propagate the bounds
     on the linearization of functions. Because we have only implemented a small
     subset of the "linearization rules", it is possible/likely that the call
     `quadgen(f,rec)` will fail if the algorithm does not manage to propagate the
-    bounds on `f` and its gradient; that is, if the call `f(::Linearization)`
+    bounds on `f` and its gradient; that is, if the call `f(::LinearizationDual)`
     fails. Feel free to open an issue (or a `PR`) if `quadgen` does not work
     with your *simple* function.
 

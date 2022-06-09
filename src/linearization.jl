@@ -166,7 +166,7 @@ end
     bound(f,rec::HyperRectangle)
 
 Return an upper bound `δ` such that `|f(x) - f(center(rec))| ≤ δ` for `x ∈ rec`.
-By default, the upper bound is computed using a bounded [`Linearization`](@ref) of `f`
+By default, the upper bound is computed using a bounded [`LinearizationDual`](@ref) of `f`
 on `rec`.
 
 This method can be overloaded for specific types `typeof(f)` if a more efficient
