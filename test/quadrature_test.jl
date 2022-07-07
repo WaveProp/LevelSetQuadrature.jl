@@ -16,7 +16,7 @@ using LevelSetQuadrature: svector
             # FIXME: there is an error when the bounding box touches the
             # boundary of the surface, so it has to be taken slighly larger for
             # the moment
-            U = HyperRectangle(1.1*svector(i->-r,n),1.1*svector(i->r,n))
+            U = HyperRectangle(1.2*svector(i->-r,n),1.1*svector(i->r,n))
             ϕ  = (x) -> sum(x .* x) - r^2
             # volume test
             @testset "volume" begin

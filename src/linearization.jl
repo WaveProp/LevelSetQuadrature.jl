@@ -202,7 +202,11 @@ function bound(l::LinearizationDual)
     δ = half_width(l)
     β = gradient(l)
     Δ = dot(abs.(β), δ) + remainder(l)
-    α - Δ, α + Δ
+    # α - Δ, α + Δ
+    m, M = α - Δ, α + Δ
+    m = abs(m)<1e-8 ? 0 : m
+    M = abs(M)<1e-8 ? 0 : M
+    m, M
 end
 
 bound(l::SVector{<:Any,<:LinearizationDual}) = bound.(l) # for gradients

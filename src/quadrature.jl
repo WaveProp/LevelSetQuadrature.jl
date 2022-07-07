@@ -62,35 +62,35 @@ TODO: extensively document this function
 """
 function quadgen(ϕ::Function,U::HyperRectangle{N},s,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
     if s == :interior
-        signs = [-1]
+        signs = [-1]; surf = false
     elseif s == :exterior
-        signs = [1]
+        signs = [1];  surf = false
     elseif s == :surface
-        signs = [0]
+        signs = [0];  surf = true
     else
         error("unrecognized argument $s. Options are `:exterior`, `:interior`, and `:surface`")
     end
     Ω = ImplicitDomain([ϕ],[∇ϕ],signs,U)
-    quadgen(Ω;kwargs...)
+    quadgen(Ω,surf;kwargs...)
 end
 
 function quadgen(ϕ::BernsteinPolynomial,s;kwargs...)
     Ω  = BernsteinDomain([ϕ],[s])
-    quadgen(Ω;kwargs...)
+    quadgen(Ω,s==0;kwargs...)
 end
 
-function quadgen(Ω::AbstractDomain;order=5,maxdepth=20,maxslope=10)
+function quadgen(Ω::AbstractDomain,surf;order=5,maxdepth=20,maxslope=10)
     par     = Parameters(maxdepth,maxslope)
     x1d,w1d = gausslegendre(order)
     # normalize quadrature from [-1,1] to [0,1] interval
     x1d .= (x1d .+ 1) ./ 2
     w1d .= w1d ./ 2
-    surf = all(iszero,Ω.signs)
     _quadgen(Ω,surf,x1d,w1d,0,par)
 end
 
 function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters) where {N,T}
     rec = Ω.rec
+    # plot!(rec)
     xc  = center(rec)
     Ψ   = Ω.Ψ
     ∇Ψ  = Ω.∇Ψ
@@ -130,8 +130,8 @@ function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters)
     end
     isvalid = ntuple(D) do dim
         all(bnds) do bnd
-            (prod(bnd[dim])≥0) &&
-            (1/minimum(abs,bnd[dim]) < par.maxslope) # FIXME: what criteria should be used here?
+            (prod(bnd[dim])>0) &&
+            (sum(bd->maximum(abs,bd), bnd)/minimum(abs,bnd[dim]) < par.maxslope)
         end
     end
     if !any(isvalid) # no valid direction so split
@@ -141,7 +141,7 @@ function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters)
         return (append!(X1, X2), append!(W1, W2))
     end
 
-    # If there is a valid direction, we go down on it. Chose the direction which
+    # If there is a valid direction, we go down on it. Choose the direction which
     # is the least steep overall by maximizing the minimum of the derivative on
     # direction k over all functions
     ∇Ψc = map(∇Ψ) do ∇ψ
@@ -167,11 +167,15 @@ function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters)
             @assert length(Ψ) == 1
             ψ = first(Ψ)
             ∇ψ = first(∇Ψ)
-            y = find_zero(y -> ψ(insert(x, k, y)), (low_corner(rec)[k], high_corner(rec)[k]))
-            x̃ = insert(x, k, y)
-            ∇ϕ = map(f->f(x̃),∇ψ)
-            push!(nodes, x̃)
-            push!(weights, w * norm(∇ϕ) / abs(∇ϕ[k]))
+            lk, rk = low_corner(rec)[k], high_corner(rec)[k]
+            ψₖ(y) = ψ(insert(x, k, y))
+            if ψₖ(lk) * ψₖ(rk) < 0
+                y = find_zero(ψₖ, (lk, rk))
+                x̃ = insert(x, k, y)
+                ∇ϕ = map(f->f(x̃),∇ψ)
+                push!(nodes, x̃)
+                push!(weights, w * norm(∇ϕ) / abs(∇ϕ[k]))
+            end
         else
             Φ = [y -> ψ(insert(x, k, y)) for ψ in Ψ]
             Y, Ω = dim1quad(Φ, signs, low_corner(rec)[k], high_corner(rec)[k], x1d, w1d, false)

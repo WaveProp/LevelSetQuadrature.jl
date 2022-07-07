@@ -95,7 +95,7 @@ function bound(p::BernsteinPolynomial, rec::HyperRectangle=domain(p))
         M = 0
     end
     if m > 0 && prod(size(p.coeffs)) < prod(p.degree.+1)
-         m = 0
+        m = 0
     end
     m, M
 end
@@ -128,6 +128,27 @@ function Base.split(p::BernsteinPolynomial{D,T}, d::Integer, α=0.5) where {D,T}
     p2 = BernsteinPolynomial(collect(selectdim(coeffs, d, k+1:k+n)), p.degree, rec2)
     p1, p2
 end
+
+function Cartesian_grid(p::BernsteinPolynomial{D,T}, grids::NTuple{D,Integer}) where {D,T}
+    list_final = [p]
+    list_tempo = Vector{BernsteinPolynomial{D,T}}()
+    for d in D:-1:1
+        if grids[d] > 1
+            for q in list_final
+                q2 = q
+                for g in grids[d]:-1:2
+                    q1, q2 = split(q2, d, 1/g)
+                    push!(list_tempo, q1)
+                end
+                push!(list_tempo, q2)
+            end
+            list_final = list_tempo
+            list_tempo = Vector{BernsteinPolynomial{D,T}}()
+        end
+    end
+    list_final
+end
+Cartesian_grid(p::BernsteinPolynomial{D,T}, grids::Integer) where {D,T} = Cartesian_grid(p, ntuple(i->grids, D))
 
 function rebase(a::Vector{<:Real}, l::Real, r::Real)
     n = length(a)
