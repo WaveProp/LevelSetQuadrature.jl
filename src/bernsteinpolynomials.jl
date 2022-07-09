@@ -1,3 +1,27 @@
+struct Polynomial{D,T}
+    coeffs::Array{T,D}
+end
+
+const VARIABLE_LABELS = ["x₁" "x₂" "x₃"]
+const POWER_LABELS    = ["" "²" "³" "⁴" "⁵" "⁶"]
+
+variable_label(i::Int) = i > length(VARIABLE_LABELS) ? "x[$i]" : VARIABLE_LABELS[i]
+power_label(i::Int)    = i > length(POWER_LABELS)    ? "^$i" : POWER_LABELS[i]
+
+function Base.show(io::IO, ::MIME"text/plain",p::Polynomial{D}) where {D}
+    str = ""
+    C   = p.coeffs
+    for I in CartesianIndices(C)
+        c = C[I]
+        iszero(c) && continue
+        θ = Tuple(I) .- 1
+        m = [iszero(θ[d]) ? "" : "$(variable_label(d))$(power_label(θ[d]))" for d in 1:D]
+        times_str = sum(Tuple(I)) == D ? "" : "⋅"
+        str = str * "$c" * times_str * prod(m) * " + "
+    end
+    print(io, str[1:end-2])
+end
+
 """
     BernsteinPolynomial{D,T}
 
