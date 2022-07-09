@@ -55,12 +55,9 @@ struct Parameters
     maxslope::Float64
 end
 
-"""
-    quadgen(ϕ,∇ϕ,U,s;order=5,maxdepth=20,maxgradient=20)
-
-TODO: extensively document this function
-"""
-function quadgen(ϕ::Function,U::HyperRectangle{N},s::Symbol,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
+# helper function to map {:negative,:positive,:zero} to the necessary data
+# required by quadgen
+function _symbol_to_signs_and_surf(s::Symbol)
     if s == :negative
         signs = [-1]; surf = false
     elseif s == :positive
@@ -70,14 +67,30 @@ function quadgen(ϕ::Function,U::HyperRectangle{N},s::Symbol,∇ϕ=gradient(ϕ,V
     else
         error("unrecognized argument $s. Options are `:positive`, `:negative`, and `:zero`")
     end
+    return signs,surf
+end
+
+"""
+    quadgen(ϕ,∇ϕ,U,s;order=5,maxdepth=20,maxgradient=20)
+
+TODO: extensively document this function
+"""
+function quadgen(ϕ::Function,U::HyperRectangle{N},s::Symbol,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
+    signs,surf = _symbol_to_signs_and_surf(s)
     Ω = ImplicitDomain([ϕ],[∇ϕ],signs,U)
     quadgen(Ω,surf;kwargs...)
 end
 
-function quadgen(ϕ::BernsteinPolynomial,s::Symbol;kwargs...)
-    Ω  = BernsteinDomain([ϕ],[s])
-    quadgen(Ω,s==0;kwargs...)
+function quadgen(ϕ::BernsteinPolynomial,U::HyperRectangle,s::Symbol;kwargs...)
+    if domain(ϕ) != U
+        # FIXME: convert ϕ to a BernsteinPolynomial on U and remove the error
+        error("domain of polynomials must match the hyperrectangle")
+    end
+    signs,surf = _symbol_to_signs_and_surf(s)
+    Ω  = BernsteinDomain([ϕ],signs)
+    quadgen(Ω,surf;kwargs...)
 end
+quadgen(ϕ::BernsteinPolynomial,s::Symbol;kwargs...) = quadgen(ϕ,domain(ϕ),s;kwargs...)
 
 function quadgen(Ω::AbstractDomain,surf;order=5,maxdepth=20,maxslope=10)
     par     = Parameters(maxdepth,maxslope)

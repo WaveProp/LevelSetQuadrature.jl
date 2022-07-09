@@ -1,4 +1,5 @@
 [deps]
+DynamicPolynomials = "7c1d4256-1411-5781-91ec-d7bc3513ac07"
 Elliptic = "b305315f-e792-5b7a-8f41-49f472929428"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
