@@ -60,21 +60,21 @@ end
 
 TODO: extensively document this function
 """
-function quadgen(ϕ::Function,U::HyperRectangle{N},s,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
-    if s == :interior
+function quadgen(ϕ::Function,U::HyperRectangle{N},s::Symbol,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
+    if s == :negative
         signs = [-1]; surf = false
-    elseif s == :exterior
+    elseif s == :positive
         signs = [1];  surf = false
-    elseif s == :surface
+    elseif s == :zero
         signs = [0];  surf = true
     else
-        error("unrecognized argument $s. Options are `:exterior`, `:interior`, and `:surface`")
+        error("unrecognized argument $s. Options are `:positive`, `:negative`, and `:zero`")
     end
     Ω = ImplicitDomain([ϕ],[∇ϕ],signs,U)
     quadgen(Ω,surf;kwargs...)
 end
 
-function quadgen(ϕ::BernsteinPolynomial,s;kwargs...)
+function quadgen(ϕ::BernsteinPolynomial,s::Symbol;kwargs...)
     Ω  = BernsteinDomain([ϕ],[s])
     quadgen(Ω,s==0;kwargs...)
 end
@@ -169,7 +169,7 @@ function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters)
             ∇ψ = first(∇Ψ)
             lk, rk = low_corner(rec)[k], high_corner(rec)[k]
             ψₖ(y) = ψ(insert(x, k, y))
-            if ψₖ(lk) * ψₖ(rk) < 0
+            if ψₖ(lk) * ψₖ(rk) < 0 # FIXME: should always be true, so why do we need this?
                 y = find_zero(ψₖ, (lk, rk))
                 x̃ = insert(x, k, y)
                 ∇ϕ = map(f->f(x̃),∇ψ)
