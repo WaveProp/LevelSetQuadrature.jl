@@ -1,3 +1,11 @@
+"""
+    struct Polynomial{D,T}
+
+`D`-dimensional polynomial with coefficients of type `T`. The coefficients are
+stored as a dense array, and are implicitly associated with a monomial basis;
+the `c[I]` coefficient multiplies the monomial term `prod(x.^(I .- 1))`, where
+`I` is a `D`-dimensional multi-index.
+"""
 struct Polynomial{D,T}
     coeffs::Array{T,D}
 end
@@ -23,9 +31,20 @@ function Base.show(io::IO, ::MIME"text/plain",p::Polynomial{D}) where {D}
 end
 
 """
-    BernsteinPolynomial{D,T}
+    struct BernsteinPolynomial{D,T}
+        coeffs::Array{T,D}
+        degree::NTuple{D,Integer}
+        domain::HyperRectangle{D,T}
+    end
 
-TODO: docstring
+Create a multivariate Bernstein polynomial
+
+```math
+p(x_1,\\dots,x_D)=\\sum_{i_j=0}^{d_j}c_{i_1\\dots i_D}\\prod_{j=1}^D\\binom{d_j}{i_j}(x_j-l_j)^{i_j}(r_j-x_j)^{d_j-i_j}
+```
+where ``c_{i_1\\dots i_D}=\\texttt{coeffs}[i_1+1,\\dots,i_D+1]``, ``d_j=\\texttt{degree}[j]``,
+``l_j=\\texttt{low\\_corner(domain)}[j]``, ``r_j=\\texttt{high\\_corner(domain)}[j]``
+
 """
 struct BernsteinPolynomial{D,T} <: Function
     coeffs::Array{T,D}
@@ -46,11 +65,22 @@ reference_cube(D) = HyperRectangle(svector(i->0., D), svector(i->1., D))
 
 BernsteinPolynomial(c::Array{<:Real,D}) where {D} = BernsteinPolynomial(c, size(c).-1, reference_cube(Val(D)))
 
+
+"""
+    lower_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
+
+Fast implemtation of `partial_application(p, d, x)` when `x = low_corner(p.domain)[d]`
+"""
 function lower_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
     @assert 1 ≤ d ≤ D
     BernsteinPolynomial(selectdim(p.coeffs, d, 1).*1, ntuple(i->i<d ? p.degree[i] : p.degree[i+1], D-1), section(p.domain, d))
 end
 
+"""
+    upper_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
+
+Fast implemtation of `partial_application(p, d, x)` when `x = high_corner(p.domain)[d]`
+"""
 function upper_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
     @assert 1 ≤ d ≤ D
     if p.degree[d] ≥ size(p.coeffs)[d]
@@ -60,6 +90,15 @@ function upper_restrict(p::BernsteinPolynomial{D}, d::Integer) where{D}
     end
 end
 
+@doc raw"""
+    partial_application(p::BernsteinPolynomial{D,T},d::Integer, x::Real)
+
+Return the `D-1`-variable Bernstein polynomial `p₁` by letting the `d`-th varible of `p` equal `x`, i.e.
+
+```math
+p_1(x_1,\dots,x_{d-1},x_{d+1},\dots,x_D)=p(x_1,\dots,x_{d-1},x,x_{d+1},\dots,x_D)
+```
+"""
 function partial_application(p::BernsteinPolynomial{D,T},d::Integer, x::Real) where{D,T}
     @assert 1 ≤ d ≤ D
     l = low_corner(p.domain)[d]; r = high_corner(p.domain)[d]
@@ -85,6 +124,11 @@ end
 
 (P::SVector{N,<:BernsteinPolynomial})(x) where {N} = svector(i->P[i](SVector(x)), N)
 
+"""
+    gradient(p::BernsteinPolynomial{D}) where{D}
+
+Return the gradien of `p` as an `SVector{D,BernsteinPolynomial{D}}`
+"""
 function gradient(p::BernsteinPolynomial{D}) where{D}
     svector(D) do d
         n = size(p.coeffs)[d]
@@ -111,6 +155,11 @@ function Base.show(io::IO, ::MIME"text/plain", p::BernsteinPolynomial)
     end
 end
 
+"""
+    bound(p::BernsteinPolynomial)
+
+Return the (approximated) lower and upper bound of `p` over `p.domain`
+"""
 function bound(p::BernsteinPolynomial, rec::HyperRectangle=domain(p))
     # @assert domain(p) == rec # maybe it makes sense to rescale p if domain(p) is not rec?
     M = maximum(p.coeffs)
@@ -124,6 +173,12 @@ function bound(p::BernsteinPolynomial, rec::HyperRectangle=domain(p))
     m, M
 end
 
+"""
+    Base.split(p::BernsteinPolynomial{D,T}, d::Integer, α=0.5)
+
+Split `p.domain` along the `d`-th axis by a portion `0 ≤ α ≤ 1`.
+Return the Bernstein polynomials on the two resulting domains.
+"""
 function Base.split(p::BernsteinPolynomial{D,T}, d::Integer, α=0.5) where {D,T}
     @assert 1 ≤ d ≤ D
     k = p.degree[d]
@@ -153,6 +208,12 @@ function Base.split(p::BernsteinPolynomial{D,T}, d::Integer, α=0.5) where {D,T}
     p1, p2
 end
 
+"""
+    Cartesian_grid(p::BernsteinPolynomial{D,T}, grids::NTuple{D,Integer}) where {D,T}
+
+Divide `p.domain` into an equidistant `grids[1]×⋯×grids[D]` Cartesian grid.
+Return the list of Bernstein polynomials on each grid cell.
+"""
 function Cartesian_grid(p::BernsteinPolynomial{D,T}, grids::NTuple{D,Integer}) where {D,T}
     list_final = [p]
     list_tempo = Vector{BernsteinPolynomial{D,T}}()
@@ -172,7 +233,14 @@ function Cartesian_grid(p::BernsteinPolynomial{D,T}, grids::NTuple{D,Integer}) w
     end
     list_final
 end
-Cartesian_grid(p::BernsteinPolynomial{D,T}, grids::Integer) where {D,T} = Cartesian_grid(p, ntuple(i->grids, D))
+
+"""
+    Cartesian_grid(p::BernsteinPolynomial{D,T}, grid::Integer) where {D,T}
+
+Simple interface for `Cartesian_grid(p, ntuple(i->grid, D))`
+"""
+Cartesian_grid(p::BernsteinPolynomial{D,T}, grid::Integer) where {D,T} = Cartesian_grid(p, ntuple(i->grid
+, D))
 
 function rebase(a::Vector{<:Real}, l::Real, r::Real)
     n = length(a)
@@ -197,9 +265,9 @@ function rebase(A::Array{<:Real,D}, rec::HyperRectangle{D}) where(D)
 end
 
 """
-    power2bernstein
+    power2bernstein(a::Array{<:Real,D}, U::HyperRectangle{D}=□(D), k=size(a).-1) where{D}
 
-TODO: document and write a `jldoctest`
+Convert a polynomial in power series into a Bernstein polynomial on `U` of degree `k`.
 """
 function power2bernstein(a::Array{<:Real,D}, U::HyperRectangle{D}=□(D), k=size(a).-1) where{D}
     b = zeros(k.+1)

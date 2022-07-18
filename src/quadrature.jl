@@ -70,40 +70,79 @@ function _symbol_to_signs_and_surf(s::Symbol)
     return signs,surf
 end
 
+### Function interface
+function quadgen!(X, W, ϕ::Function,U::HyperRectangle{N},s,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
+    signs, surf = _symbol_to_signs_and_surf(s)
+    Ω = ImplicitDomain([ϕ],[∇ϕ],signs,U)
+    quadgen!(X, W, Ω,surf;kwargs...)
+end
+
 """
     quadgen(ϕ,∇ϕ,U,s;order=5,maxdepth=20,maxgradient=20)
 
-TODO: extensively document this function
+Return the quadrature nodes `X` and weights `W` for integrating over the domain `V∩U`
+where `V = {ϕ < 0}` if `s = :negative`
+      `V = {ϕ > 0}` if `s = :positive`
+      `V = {ϕ = 0}` if `s = :surface`
 """
-function quadgen(ϕ::Function,U::HyperRectangle{N},s::Symbol,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
-    signs,surf = _symbol_to_signs_and_surf(s)
-    Ω = ImplicitDomain([ϕ],[∇ϕ],signs,U)
-    quadgen(Ω,surf;kwargs...)
+function quadgen(ϕ::Function,U::HyperRectangle{N},s,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
+    X = Vector{SVector{N,Float64}}()
+    W = Vector{Float64}()
+    quadgen!(X, W, ϕ, U, s, ∇ϕ;kwargs...)
+end
+######################
+
+### Polynomial interface
+function quadgen!(X, W, p::Polynomial{N}, U::HyperRectangle{N}, s;kwargs...) where {N}
+    coeffs = p.coeffs
+    ϕ = power2bernstein(coeffs, U)
+    quadgen!(X, W, ϕ, s;kwargs...)
 end
 
-function quadgen(ϕ::BernsteinPolynomial,U::HyperRectangle,s::Symbol;kwargs...)
-    if domain(ϕ) != U
-        # FIXME: convert ϕ to a BernsteinPolynomial on U and remove the error
-        error("domain of polynomials must match the hyperrectangle")
-    end
+function quadgen(p::Polynomial{N}, U::HyperRectangle{N}, s;kwargs...) where {N}
+    X = Vector{SVector{N,Float64}}()
+    W = Vector{Float64}()
+    quadgen!(X, W, p, U, s;kwargs...)
+end
+########################
+
+### Bernstein Polynomial interface
+function quadgen!(X, W, ϕ::BernsteinPolynomial{N},s;kwargs...) where{N}
     signs,surf = _symbol_to_signs_and_surf(s)
     Ω  = BernsteinDomain([ϕ],signs)
-    quadgen(Ω,surf;kwargs...)
+    quadgen!(X, W, Ω, surf;kwargs...)
 end
-quadgen(ϕ::BernsteinPolynomial,s::Symbol;kwargs...) = quadgen(ϕ,domain(ϕ),s;kwargs...)
 
-function quadgen(Ω::AbstractDomain,surf;order=5,maxdepth=20,maxslope=10)
+function quadgen(ϕ::BernsteinPolynomial{N},s;kwargs...) where{N}
+    X = Vector{SVector{N,Float64}}()
+    W = Vector{Float64}()
+    quadgen!(X, W, ϕ, s;kwargs...)
+end
+##################################
+
+### AbstractDomain interface
+function quadgen!(X, W, Ω::AbstractDomain, surf;order=5,maxdepth=20,maxslope=10)
     par     = Parameters(maxdepth,maxslope)
     x1d,w1d = gausslegendre(order)
     # normalize quadrature from [-1,1] to [0,1] interval
     x1d .= (x1d .+ 1) ./ 2
     w1d .= w1d ./ 2
-    _quadgen(Ω,surf,x1d,w1d,0,par)
+    X̃, W̃ = _quadgen(Ω,surf,x1d,w1d,0,par)
+    append!(X, X̃)
+    append!(W, W̃)
+    X, W
 end
+
+function quadgen(Ω::AbstractDomain{N},surf;order=5,maxdepth=20,maxslope=10) where{N}
+    X = Vector{SVector{N,Float64}}()
+    W = Vector{Float64}()
+    quadgen!(X, W, Ω, surf;order, maxdepth, maxslope)
+end
+############################
+
 
 function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters) where {N,T}
     rec = Ω.rec
-    # plot!(rec)
     xc  = center(rec)
     Ψ   = Ω.Ψ
     ∇Ψ  = Ω.∇Ψ
@@ -182,7 +221,7 @@ function _quadgen(Ω::AbstractDomain{N,T},surf,x1d, w1d, level, par::Parameters)
             ∇ψ = first(∇Ψ)
             lk, rk = low_corner(rec)[k], high_corner(rec)[k]
             ψₖ(y) = ψ(insert(x, k, y))
-            if ψₖ(lk) * ψₖ(rk) < 0 # FIXME: should always be true, so why do we need this?
+            if ψₖ(lk) * ψₖ(rk) < 0
                 y = find_zero(ψₖ, (lk, rk))
                 x̃ = insert(x, k, y)
                 ∇ϕ = map(f->f(x̃),∇ψ)

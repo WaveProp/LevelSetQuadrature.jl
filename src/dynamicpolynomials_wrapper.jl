@@ -19,10 +19,14 @@ function monomial_coefs(p::DynamicPolynomials.Polynomial)
     coefs
 end
 
-function quadgen(p::DynamicPolynomials.Polynomial,U,s::Symbol;kwargs...)
-    signs,surf = _symbol_to_signs_and_surf(s)
+function quadgen!(X, W, p::DynamicPolynomials.Polynomial,U::HyperRectangle{N},s::Symbol;kwargs...) where {N}
     coefs = monomial_coefs(p)
-    ϕ     = power2bernstein(coefs,U)
-    Ω     = BernsteinDomain([ϕ],signs)
-    quadgen(Ω,surf;kwargs...)
+    ϕ     = power2bernstein(coefs, U)
+    quadgen!(X, W, ϕ, s;kwargs...)
+end
+
+function quadgen(p::DynamicPolynomials.Polynomial,U::HyperRectangle{N},s::Symbol;kwargs...) where {N}
+    X = Vector{SVector{N,Float64}}()
+    W = Vector{Float64}()
+    quadgen!(X, W, p, U, s;kwargs...)
 end
