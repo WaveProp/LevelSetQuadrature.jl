@@ -78,12 +78,31 @@ function quadgen!(X, W, ϕ::Function,U::HyperRectangle{N},s,∇ϕ=gradient(ϕ,Va
 end
 
 """
-    quadgen(ϕ,∇ϕ,U,s;order=5,maxdepth=20,maxgradient=20)
+    quadgen(ϕ,U,s;kwargs...)
 
 Return the quadrature nodes `X` and weights `W` for integrating over the domain `V∩U`
-where `V = {ϕ < 0}` if `s = :negative`
-      `V = {ϕ > 0}` if `s = :positive`
-      `V = {ϕ = 0}` if `s = :surface`
+where
+- `V = {ϕ < 0}` if `s = :negative`
+- `V = {ϕ > 0}` if `s = :positive`
+- `V = {ϕ = 0}` if `s = :surface`
+
+# Examples
+
+```jldoctest
+julia> using LevelSetQuadrature
+
+julia> f   = (x) -> x[1]^2 + x[2]^2 - 1;
+
+julia> lb, ub = -1.1, 1.1;
+
+julia> rec = HyperRectangle((lb,lb),(ub,ub));
+
+julia> x,w = quadgen(f,rec,:negative);
+
+julia> sum(w) # area of circle, should be close to π
+3.141599349935535
+```
+
 """
 function quadgen(ϕ::Function,U::HyperRectangle{N},s,∇ϕ=gradient(ϕ,Val(N));kwargs...) where {N}
     X = Vector{SVector{N,Float64}}()
