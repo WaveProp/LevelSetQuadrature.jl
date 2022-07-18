@@ -1,4 +1,4 @@
-abstract type AbstractDual{N,T} end
+abstract type AbstractDual{N,T} <: Number end
 
 """
     GradientDual{N,T}
@@ -143,7 +143,6 @@ end
 
 # power
 function Base.:^(l::LinearizationDual, p::Integer)
-    @assert p ≥ 1
     if p == 1
         return l
     else
@@ -172,7 +171,7 @@ on `rec`.
 This method can be overloaded for specific types `typeof(f)` if a more efficient
 way of computing the bound is known (e.g. if `f` is affine).
 """
-function bound(f::Function, rec::HyperRectangle{D}) where {D}
+function bound(f, rec::HyperRectangle{D}) where {D}
     f̂ = linearization(f, rec)
     bound(f̂)
 end
@@ -190,7 +189,7 @@ end
 # of functions). Maybe not the most efficient one, but does not seem to affect
 # the performance in any significant way. A better way could be to get the
 # partial independently
-function gradient(ϕ::Function,::Val{D}) where {D}
+function gradient(ϕ,::Val{D}) where {D}
     f = (x) -> gradient(ϕ,x)
     svector(i-> x -> f(x)[i],D)
 end
@@ -202,11 +201,7 @@ function bound(l::LinearizationDual)
     δ = half_width(l)
     β = gradient(l)
     Δ = dot(abs.(β), δ) + remainder(l)
-    # α - Δ, α + Δ
-    m, M = α - Δ, α + Δ
-    m = abs(m)<1e-8 ? 0 : m
-    M = abs(M)<1e-8 ? 0 : M
-    m, M
+    α - Δ, α + Δ
 end
 
 bound(l::SVector{<:Any,<:LinearizationDual}) = bound.(l) # for gradients

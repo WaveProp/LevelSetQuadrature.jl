@@ -46,7 +46,7 @@ To generate a quadrature for the disk we may then call [`quadgen`](@ref) as foll
 
 ```@example circle
 rec = HyperRectangle((lb,lb),(ub,ub))
-x,w = quadgen(f,rec,:interior)
+x,w = quadgen(f,rec,:negative)
 println("error in area: ", abs(sum(w) - pi))
 ```
 
@@ -56,11 +56,11 @@ This produces the following set of nodes
 scatter!(fig,PlotPoints(),x,label="interior nodes",ms=3,m=:cross)
 ```
 
-Similarly, a surface quadrature can be created by passing `:surface` instead of
-`:interior` as an argument to [`quadgen`](@ref):
+Similarly, a surface quadrature can be created by passing `:zero` instead of
+`:negative` as an argument to [`quadgen`](@ref):
 
 ```@example circle
-x,w = quadgen(f,rec,:surface)
+x,w = quadgen(f,rec,:zero)
 println("error in perimeter:", abs(sum(w) - 2*pi))
 ```
 
@@ -82,7 +82,7 @@ f = (x) -> (x[1]^2 + x[2]^2)^2 - 2*c^2*(x[1]^2 - x[2]^2) - (a^4 - c^4)
 l,u = -1.5,1.5
 rec = HyperRectangle((l,l),(u,u))
 # generate the quadrature
-x,w = quadgen(f,rec,:interior)
+x,w = quadgen(f,rec,:negative)
 
 # plot the domain and quadrature
 xx = yy = l:0.05:u
@@ -101,7 +101,7 @@ using Plots
 f = (x) -> sum(x.*x) - 1
 l,u = -1.5,1.5
 rec = HyperRectangle((l,l,l),(u,u,u))
-x,w = quadgen(f,rec,:surface)
+x,w = quadgen(f,rec,:zero)
 println("error in surface area: ", sum(w) - 4π)
 ```
 

@@ -4,6 +4,7 @@ using LinearAlgebra
 using StaticArrays
 using Roots
 using FastGaussQuadrature
+using Requires
 
 import WavePropBase:
     HyperRectangle,
@@ -36,5 +37,12 @@ export
     # re-export
     WavePropBase,
     PlotPoints
+
+
+function __init__()
+    @require DynamicPolynomials="7c1d4256-1411-5781-91ec-d7bc3513ac07" begin
+        include("dynamicpolynomials_wrapper.jl")
+    end
+end
 
 end # module

@@ -1,3 +1,4 @@
 Manifest.toml
 *.json
 docs/build
+test/Manifest.toml

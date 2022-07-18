@@ -2,6 +2,7 @@ using Test
 using LevelSetQuadrature
 using StaticArrays
 using SpecialFunctions
+using DynamicPolynomials
 
 using LevelSetQuadrature: svector, low_corner, high_corner, center, gradient
 
@@ -56,18 +57,42 @@ end
     for n in 2:4
         @testset "dimension $n" begin
             U = HyperRectangle(1.0*svector(i->-r,n),1.0*svector(i->r,n))
-            c = zeros(ntuple(i->3, n))
-            c[1] = -1
-            for i in 0:n-1
-                c[2*3^i+1] = 1
+            @testset "Polynomial interface" begin
+                c = zeros(ntuple(i->3, n))
+                c[1] = -1
+                for i in 0:n-1
+                    c[2*3^i+1] = 1
+                end
+                ϕ = LevelSetQuadrature.Polynomial(c)
+                X, W = quadgen(ϕ,U,:negative; order=p)
+                @test isapprox(sum(W),sphere_volume(r,n);atol)
+                # area test
+                X, W = quadgen(ϕ,U,:zero; order=p)
+                @test isapprox(sum(W),sphere_area(r,n);atol)
             end
-            ϕ = power2bernstein(c, U)
-            # volume test
-            X, W = quadgen(ϕ, -1; order=p)
-            @test isapprox(sum(W),sphere_volume(r,n);atol)
-            # area test
-            X, W = quadgen(ϕ, 0; order=p)
-            @test isapprox(sum(W),sphere_area(r,n);atol)
+            @testset "Bernstein interface" begin
+                c = zeros(ntuple(i->3, n))
+                c[1] = -1
+                for i in 0:n-1
+                    c[2*3^i+1] = 1
+                end
+                ϕ = power2bernstein(c, U)
+                X, W = quadgen(ϕ,:negative; order=p)
+                @test isapprox(sum(W),sphere_volume(r,n);atol)
+                # area test
+                X, W = quadgen(ϕ,:zero; order=p)
+                @test isapprox(sum(W),sphere_area(r,n);atol)
+            end
+            @testset "DynamicPolynomials interface" begin
+                @polyvar x[1:n]
+                ϕ = sum(i->i^2,x) - r^2
+                # volume test
+                X, W = quadgen(ϕ,U,:negative; order=p)
+                @test isapprox(sum(W),sphere_volume(r,n);atol)
+                # area test
+                X, W = quadgen(ϕ,U,:zero; order=p)
+                @test isapprox(sum(W),sphere_area(r,n);atol)
+            end
         end
     end
 end
