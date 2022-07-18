@@ -134,7 +134,7 @@ In the case of polynomial domains ...
 
 ## Advanced usage
 
-## Other limitations and known issues
+## Limitations and known issues
 
 Here are some know limitations of the package:
 
