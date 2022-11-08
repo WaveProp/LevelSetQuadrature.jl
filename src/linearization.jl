@@ -196,6 +196,7 @@ end
 
 half_width(l::LinearizationDual) = half_width(domain(l))
 
+bound(x::Number) = (x, x)
 function bound(l::LinearizationDual)
     α = value(l)
     δ = half_width(l)
